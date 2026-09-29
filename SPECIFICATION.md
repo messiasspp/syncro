@@ -1,8 +1,8 @@
-# No-Conflict: Architectural Specification & Implementation Roadmap
+# Sincro: Architectural Specification & Implementation Roadmap
 
 ## 1. Executive Summary
 
-**No-Conflict** is an intelligent, rule-based calendar scheduling application designed to automatically allocate and optimize appointment dates and times across Google Calendar and Apple Calendar without scheduling collisions.
+**Sincro** is an intelligent, rule-based calendar scheduling application designed to automatically allocate and optimize appointment dates and times across Google Calendar and Apple Calendar without scheduling collisions.
 
 The system addresses both personal scheduling (e.g., social gatherings like "Friends Zone") and complex professional/clinical protocols (e.g., a 1-year clinical research study for Mounjaro requiring bi-monthly visits on specific days and time windows).
 

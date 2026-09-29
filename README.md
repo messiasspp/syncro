@@ -1,10 +1,10 @@
-# No-Conflict
+# Sincro
 
 > Intelligent, rule-based calendar scheduling for Google Calendar and Apple Calendar with collision-free slot optimization.
 
 ## Overview
 
-**No-Conflict** is a cross-platform scheduling engine and application built with Flutter. It automatically allocates optimal dates and times for personal events and professional/clinical research protocols without scheduling collisions.
+**Sincro** is a cross-platform scheduling engine and application built with Flutter. It automatically allocates optimal dates and times for personal events and professional/clinical research protocols without scheduling collisions.
 
 ### Key Capabilities
 
