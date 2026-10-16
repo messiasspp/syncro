@@ -1,10 +1,10 @@
-# Sincro
+# Syncro
 
 > Intelligent, rule-based calendar scheduling for Google Calendar and Apple Calendar with collision-free slot optimization.
 
 ## Overview
 
-**Sincro** is a cross-platform scheduling engine and application built with Flutter. It automatically allocates optimal dates and times for personal events and professional/clinical research protocols without scheduling collisions.
+**Syncro** is a cross-platform scheduling engine and application built with Flutter. It automatically allocates optimal dates and times for personal events and professional/clinical research protocols without scheduling collisions.
 
 ### Key Capabilities
 
@@ -20,7 +20,7 @@
 ## Architecture & Documentation
 
 For the complete architectural design, entity-relationship diagrams, interval scheduling algorithms, and rollout phases, see:
-📖 **[SPECIFICATION.md](file:///home/msz/Development/no-conflict/SPECIFICATION.md)**
+📖 **[SPECIFICATION.md](file:///home/msz/Development/syncro/SPECIFICATION.md)**
 
 ---
 
