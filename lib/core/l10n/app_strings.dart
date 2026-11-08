@@ -123,6 +123,12 @@ class AppStrings {
       : 'Cascade applied! Downstream visits recalculated without collisions.';
 
   // Settings Screen
+  String get appearanceSectionTitle =>
+      isPt ? 'Aparência e Tema Visual' : 'Visual Appearance & Theme';
+  String get darkGlassThemeLabel =>
+      isPt ? 'Obsidian Dark (Glass)' : 'Obsidian Dark (Glass)';
+  String get lightGlassThemeLabel =>
+      isPt ? 'Luminous Light' : 'Luminous Light';
   String get languageSectionTitle =>
       isPt ? 'Idioma e Formato de Hora' : 'Language & Time Format';
   String get use24HourLabel =>
@@ -138,6 +144,10 @@ class AppStrings {
       isPt ? 'Sincronizar Agora' : 'Sync All Confirmed Appointments';
   String get resetDemoButton =>
       isPt ? 'Restaurar Dados de Demonstração' : 'Reset Pre-seeded Demo Data';
+  String get swipeToConfirmHint => isPt
+      ? 'Deslize para confirmar →'
+      : 'Swipe right to confirm →';
+  String get allDatesLabel => isPt ? 'Todas as Datas' : 'All Dates';
 
   // Weekday Names
   String weekdayName(int weekday, {bool short = false}) {

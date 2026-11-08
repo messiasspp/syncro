@@ -1,7 +1,12 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/l10n/app_strings.dart';
+import 'core/theme/syncro_theme.dart';
+import 'core/widgets/glass_container.dart';
 import 'features/scheduling/presentation/providers/scheduling_providers.dart';
 import 'features/scheduling/presentation/screens/agenda_screen.dart';
 import 'features/scheduling/presentation/screens/entities_screen.dart';
@@ -18,18 +23,19 @@ void main() {
   );
 }
 
-class SyncroApp extends StatelessWidget {
+class SyncroApp extends ConsumerWidget {
   const SyncroApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+
     return MaterialApp(
       title: 'Syncro',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-        useMaterial3: true,
-      ),
+      themeMode: themeMode,
+      theme: SyncroTheme.lightTheme,
+      darkTheme: SyncroTheme.darkTheme,
       home: const SyncroHomeScreen(),
     );
   }
@@ -46,31 +52,101 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen> {
   int _selectedIndex = 0;
 
   static const List<Widget> _screens = [
-    AgendaScreen(),
-    EventTypesScreen(),
-    EntitiesScreen(),
-    SchedulerScreen(),
-    SettingsScreen(),
+    AgendaScreen(key: ValueKey('tab_agenda')),
+    EventTypesScreen(key: ValueKey('tab_event_types')),
+    EntitiesScreen(key: ValueKey('tab_entities')),
+    SchedulerScreen(key: ValueKey('tab_scheduler')),
+    SettingsScreen(key: ValueKey('tab_settings')),
   ];
 
   @override
   Widget build(BuildContext context) {
     final strings = ref.watch(appStringsProvider);
     final currentLang = ref.watch(appLanguageProvider);
+    final themeMode = ref.watch(themeModeProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
+      extendBody: true,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text(strings.appTitle),
+        flexibleSpace: ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              decoration: BoxDecoration(
+                color: (isDark
+                        ? SyncroColors.darkCanvas
+                        : SyncroColors.lightCanvas)
+                    .withValues(alpha: 0.72),
+                border: Border(
+                  bottom: BorderSide(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.10)
+                        : SyncroColors.electricIndigo.withValues(alpha: 0.12),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        title: Row(
+          children: [
+            Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: SyncroColors.clinicalEmerald,
+                boxShadow: [
+                  BoxShadow(
+                    color: SyncroColors.clinicalEmerald.withValues(alpha: 0.7),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                strings.appTitle,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ),
+          ],
+        ),
         actions: [
+          IconButton(
+            tooltip: 'Toggle Dark / Light Mode',
+            icon: Icon(
+              themeMode == ThemeMode.dark
+                  ? Icons.light_mode_rounded
+                  : Icons.dark_mode_rounded,
+              size: 20,
+            ),
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              ref.read(themeModeProvider.notifier).state =
+                  themeMode == ThemeMode.dark
+                      ? ThemeMode.light
+                      : ThemeMode.dark;
+            },
+          ),
           Tooltip(
             message: 'Toggle EN / PT-BR',
             child: TextButton.icon(
-              icon: const Icon(Icons.translate, size: 18),
+              icon: const Icon(Icons.translate_rounded, size: 17),
               label: Text(
                 currentLang == AppLanguage.en ? 'EN' : 'PT',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(fontWeight: FontWeight.w900),
               ),
               onPressed: () {
+                HapticFeedback.selectionClick();
                 ref.read(appLanguageProvider.notifier).state =
                     currentLang == AppLanguage.en
                         ? AppLanguage.ptBr
@@ -80,8 +156,9 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen> {
           ),
           IconButton(
             tooltip: strings.syncCalendarsTooltip,
-            icon: const Icon(Icons.sync),
+            icon: const Icon(Icons.sync_rounded),
             onPressed: () async {
+              HapticFeedback.mediumImpact();
               final result =
                   await ref.read(calendarSyncServiceProvider).syncAll();
               ref.invalidate(externalCalendarsFutureProvider);
@@ -100,8 +177,9 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen> {
           ),
           IconButton(
             tooltip: strings.resetDemoDataTooltip,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
             onPressed: () async {
+              HapticFeedback.mediumImpact();
               await ref.read(demoSeedServiceProvider).resetAndSeed();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -114,32 +192,41 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen> {
           ),
         ],
       ),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _screens,
+      body: AmbientMeshBackground(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 240),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          child: _screens[_selectedIndex],
+        ),
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: FloatingGlassNavBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (idx) => setState(() => _selectedIndex = idx),
         destinations: [
-          NavigationDestination(
-            icon: const Icon(Icons.calendar_month),
+          GlassNavDestination(
+            icon: Icons.calendar_month_outlined,
+            activeIcon: Icons.calendar_month_rounded,
             label: strings.tabAgenda,
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.category),
+          GlassNavDestination(
+            icon: Icons.category_outlined,
+            activeIcon: Icons.category_rounded,
             label: strings.tabEventTypes,
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.people),
+          GlassNavDestination(
+            icon: Icons.people_outline_rounded,
+            activeIcon: Icons.people_rounded,
             label: strings.tabEntities,
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.auto_awesome),
+          GlassNavDestination(
+            icon: Icons.auto_awesome_outlined,
+            activeIcon: Icons.auto_awesome_rounded,
             label: strings.tabScheduler,
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.settings),
+          GlassNavDestination(
+            icon: Icons.settings_outlined,
+            activeIcon: Icons.settings_rounded,
             label: strings.tabSettings,
           ),
         ],

@@ -1,7 +1,11 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/theme/syncro_theme.dart';
+import '../../../../core/widgets/glass_container.dart';
 import '../../domain/models/appointment.dart';
 import '../../domain/models/entity.dart';
 import '../../domain/models/event_type.dart';
@@ -9,7 +13,8 @@ import '../../domain/models/protocol_enrollment.dart';
 import '../providers/scheduling_providers.dart';
 import '../widgets/confirmation_sheet.dart';
 
-/// Tab 3: Directory of Participants (Friends & Clinical Patients) with Protocol Roadmaps.
+/// Tab 3: Glassmorphic Directory of Participants (Friends & Clinical Patients)
+/// with 24-Visit Protocol Heatmap & Roadmaps.
 class EntitiesScreen extends ConsumerWidget {
   const EntitiesScreen({super.key});
 
@@ -28,62 +33,97 @@ class EntitiesScreen extends ConsumerWidget {
     final appointments =
         appointmentsAsync.valueOrNull ?? const <Appointment>[];
 
-    final Map<String, EventType> typesById = {
-      for (final t in eventTypes) t.id: t,
-    };
-    final Map<String, ProtocolEnrollment> enrollmentsByEntity = {
-      for (final e in enrollments) e.entityId: e,
-    };
+    final eventTypeById = {for (final et in eventTypes) et.id: et};
+    final enrollmentByEntityId = {for (final p in enrollments) p.entityId: p};
+    final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight + 14;
 
-    return Scaffold(
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
-        children: [
-          Text(
-            strings.entitiesHeader,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-          ),
-          const SizedBox(height: 12),
-          for (final entity in entities)
-            _EntityCard(
-              entity: entity,
-              eventType: typesById[entity.defaultEventTypeId],
-              enrollment: enrollmentsByEntity[entity.id],
-              entityAppointments: appointments
-                  .where((a) => a.entityId == entity.id)
-                  .toList(),
-              strings: strings,
+    return Stack(
+      children: [
+        ListView(
+          physics: const BouncingScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(16, topPadding, 16, 155),
+          children: [
+            Text(
+              strings.entitiesHeader,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
             ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () =>
-            _showAddEntityDialog(context, ref, eventTypes, strings),
-        icon: const Icon(Icons.person_add_alt_1),
-        label: Text(strings.newEntityButton),
-      ),
+            const SizedBox(height: 14),
+            for (int i = 0; i < entities.length; i++)
+              StaggeredReveal(
+                index: i,
+                child: _EntityGlassCard(
+                  entity: entities[i],
+                  eventType: eventTypeById[entities[i].defaultEventTypeId],
+                  enrollment: enrollmentByEntityId[entities[i].id],
+                  entityAppointments: appointments
+                      .where((a) => a.entityId == entities[i].id)
+                      .toList(),
+                  strings: strings,
+                ),
+              ),
+          ],
+        ),
+        Positioned(
+          right: 16,
+          bottom: 112,
+          child: AnimatedScaleTap(
+            onTap: () => _showCreateEntityDialog(
+              context,
+              ref,
+              strings,
+              eventTypes,
+            ),
+            child: GlassContainer(
+              borderRadius: 26,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+              tintColor: Theme.of(context).colorScheme.primary,
+              borderColor: Colors.white.withValues(alpha: 0.32),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.person_add_alt_1_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    strings.newEntityButton,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  Future<void> _showAddEntityDialog(
+  Future<void> _showCreateEntityDialog(
     BuildContext context,
     WidgetRef ref,
-    List<EventType> eventTypes,
     AppStrings strings,
+    List<EventType> eventTypes,
   ) async {
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
-    String? selectedTypeId =
+    String? selectedEventTypeId =
         eventTypes.isNotEmpty ? eventTypes.first.id : null;
 
     await showDialog<void>(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
-          builder: (ctx, setDialogState) {
+          builder: (ctx, setModalState) {
             return AlertDialog(
               title: Text(strings.newEntityButton),
               content: SingleChildScrollView(
@@ -93,29 +133,20 @@ class EntitiesScreen extends ConsumerWidget {
                     TextField(
                       controller: nameCtrl,
                       decoration: InputDecoration(
-                        labelText: strings.isPt ? 'Nome Completo' : 'Full Name',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: phoneCtrl,
-                      decoration: InputDecoration(
-                        labelText: strings.isPt ? 'Telefone / WhatsApp' : 'Phone / WhatsApp',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: emailCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
+                        labelText:
+                            strings.isPt ? 'Nome Completo' : 'Full Name',
+                        hintText: 'e.g. Alex / Patient 103',
                       ),
                     ),
                     const SizedBox(height: 12),
                     if (eventTypes.isNotEmpty)
                       DropdownButtonFormField<String>(
-                        initialValue: selectedTypeId,
+                        isExpanded: true,
+                        initialValue: selectedEventTypeId,
                         decoration: InputDecoration(
-                          labelText: strings.isPt ? 'Categoria Padrão' : 'Default Event Type',
+                          labelText: strings.isPt
+                              ? 'Categoria Padrão'
+                              : 'Default Event Type',
                         ),
                         items: eventTypes
                             .map(
@@ -125,9 +156,27 @@ class EntitiesScreen extends ConsumerWidget {
                               ),
                             )
                             .toList(),
-                        onChanged: (v) =>
-                            setDialogState(() => selectedTypeId = v),
+                        onChanged: (val) =>
+                            setModalState(() => selectedEventTypeId = val),
                       ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'WhatsApp / Phone',
+                        hintText: '+1-555-0199',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: emailCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        hintText: 'participant@example.com',
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -139,17 +188,17 @@ class EntitiesScreen extends ConsumerWidget {
                 FilledButton(
                   onPressed: () async {
                     final name = nameCtrl.text.trim();
-                    if (name.isEmpty) return;
+                    if (name.isEmpty || selectedEventTypeId == null) return;
                     final entity = Entity(
                       id: 'entity_${DateTime.now().millisecondsSinceEpoch}',
                       name: name,
+                      defaultEventTypeId: selectedEventTypeId!,
                       phone: phoneCtrl.text.trim().isEmpty
                           ? null
                           : phoneCtrl.text.trim(),
                       email: emailCtrl.text.trim().isEmpty
                           ? null
                           : emailCtrl.text.trim(),
-                      defaultEventTypeId: selectedTypeId,
                     );
                     await ref
                         .read(schedulingRepositoryProvider)
@@ -167,14 +216,14 @@ class EntitiesScreen extends ConsumerWidget {
   }
 }
 
-class _EntityCard extends StatelessWidget {
+class _EntityGlassCard extends StatelessWidget {
   final Entity entity;
   final EventType? eventType;
   final ProtocolEnrollment? enrollment;
   final List<Appointment> entityAppointments;
   final AppStrings strings;
 
-  const _EntityCard({
+  const _EntityGlassCard({
     required this.entity,
     required this.eventType,
     required this.enrollment,
@@ -184,233 +233,332 @@ class _EntityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = parseHexColor(eventType?.colorHex ?? '#3F51B5');
+    final color = parseHexColor(eventType?.colorHex ?? '#6366F1');
+    final initials = entity.name
+        .trim()
+        .split(' ')
+        .where((p) => p.isNotEmpty)
+        .take(2)
+        .map((p) => p[0].toUpperCase())
+        .join();
 
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: color.withValues(alpha: 0.16),
-                  foregroundColor: color,
-                  child: Text(
-                    entity.name.isNotEmpty ? entity.name[0].toUpperCase() : '?',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        entity.name,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                      if (entity.phone != null || entity.email != null)
-                        Text(
-                          [
-                            if (entity.phone != null) entity.phone!,
-                            if (entity.email != null) entity.email!,
-                          ].join(' • '),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+    return GlassContainer(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      borderRadius: 20,
+      borderColor: color.withValues(alpha: 0.36),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      color,
+                      color.withValues(alpha: 0.65),
                     ],
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.40),
+                      blurRadius: 10,
+                    ),
+                  ],
                 ),
-                if (eventType != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      eventType!.name,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: color,
-                      ),
-                    ),
+                child: Text(
+                  initials,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
                   ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (entity.customAvailabilityOverrides.isNotEmpty) ...[
-              Row(
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entity.name,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    Text(
+                      '${eventType?.name ?? entity.defaultEventTypeId}'
+                      '${entity.phone != null ? " • ${entity.phone}" : ""}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: color.withValues(alpha: 0.35)),
+                ),
+                child: Text(
+                  '${entityAppointments.length} ${strings.isPt ? "visitas" : "visits"}',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (entity.customAvailabilityOverrides.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: SyncroColors.amberSuggested.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: SyncroColors.amberSuggested.withValues(alpha: 0.38),
+                ),
+              ),
+              child: Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.tune_rounded,
                     size: 16,
-                    color: Colors.deepOrange.shade700,
+                    color: SyncroColors.amberSuggested,
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${strings.customOverridesLabel}: ',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.deepOrange.shade700,
-                    ),
-                  ),
-                  Expanded(
-                    child: Wrap(
-                      spacing: 6,
-                      children: [
-                        for (final w in entity.customAvailabilityOverrides)
-                          Text(
-                            '${strings.weekdayName(w.dayOfWeek, short: true)} '
-                            '${w.startHour.toString().padLeft(2, '0')}:00–'
-                            '${w.endHour.toString().padLeft(2, '0')}:00',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ] else
-              Text(
-                strings.defaultScheduleLabel,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            if (enrollment != null) ...[
-              const Divider(height: 20),
-              Row(
-                children: [
-                  Icon(Icons.science_outlined, size: 18, color: color),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '${enrollment!.protocolName} • '
-                      '${entityAppointments.length}/${enrollment!.totalVisits} Visits '
-                      '(Every ${enrollment!.cadenceDays}d ±${enrollment!.toleranceWindowDays}d)',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                      '${strings.customOverridesLabel}: '
+                      '${entity.customAvailabilityOverrides.map((w) => "${strings.weekdayName(w.dayOfWeek, short: true)} ${w.startHour.toString().padLeft(2, '0')}:00–${w.endHour.toString().padLeft(2, '0')}:00").join(", ")}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: SyncroColors.amberSuggested,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              LinearProgressIndicator(
+            )
+          else
+            Text(
+              strings.defaultScheduleLabel,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          if (enrollment != null) ...[
+            const Divider(height: 22),
+            Row(
+              children: [
+                Icon(Icons.science_outlined, size: 18, color: color),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${enrollment!.protocolName} • '
+                    '${entityAppointments.length}/${enrollment!.totalVisits} Visits '
+                    '(Every ${enrollment!.cadenceDays}d ±${enrollment!.toleranceWindowDays}d)',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
                 value: enrollment!.totalVisits > 0
                     ? (entityAppointments.length / enrollment!.totalVisits)
                         .clamp(0.0, 1.0)
                     : 0.0,
+                minHeight: 6,
                 color: color,
                 backgroundColor: color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6),
               ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.timeline_rounded, size: 18),
-                  label: Text(strings.viewProtocolRoadmap),
-                  onPressed: () => _showRoadmapModal(context, color),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonalIcon(
+                icon: const Icon(Icons.grid_view_rounded, size: 17),
+                label: Text(strings.viewProtocolRoadmap),
+                style: FilledButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
+                onPressed: () => _showRoadmapModal(context, color),
               ),
-            ],
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
 
   void _showRoadmapModal(BuildContext context, Color color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
         return DraggableScrollableSheet(
           expand: false,
-          initialChildSize: 0.7,
-          maxChildSize: 0.92,
+          initialChildSize: 0.78,
+          maxChildSize: 0.94,
           builder: (_, scrollController) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 4,
-                  ),
-                  child: Text(
-                    '${entity.name} • ${enrollment?.protocolName ?? ""}',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                ),
-                const Divider(),
-                Expanded(
-                  child: ListView.builder(
-                    controller: scrollController,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
+            return ClipRRect(
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28)),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(28)),
+                    border: Border(
+                      top: BorderSide(
+                        color: color.withValues(alpha: 0.45),
+                        width: 1.4,
+                      ),
                     ),
-                    itemCount: entityAppointments.length,
-                    itemBuilder: (_, idx) {
-                      final apt = entityAppointments[idx];
-                      final visitNum = (apt.visitIndex ?? idx) + 1;
-                      return ListTile(
-                        dense: true,
-                        leading: CircleAvatar(
-                          radius: 14,
-                          backgroundColor: color.withValues(alpha: 0.15),
-                          foregroundColor: color,
-                          child: Text(
-                            '$visitNum',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
+                    color: isDark
+                        ? SyncroColors.darkSurface.withValues(alpha: 0.92)
+                        : Colors.white.withValues(alpha: 0.94),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 42,
+                          height: 4,
+                          margin: const EdgeInsets.only(top: 12, bottom: 12),
+                          decoration: BoxDecoration(
+                            color: (isDark ? Colors.white : Colors.black)
+                                .withValues(alpha: 0.24),
+                            borderRadius: BorderRadius.circular(4),
                           ),
                         ),
-                        title: Text(
-                          strings.formatDateHeader(apt.timeRange.start),
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 4,
                         ),
-                        subtitle: Text(
-                          strings.formatTimeRange(apt.timeRange),
+                        child: Text(
+                          '${entity.name} • ${enrollment?.protocolName ?? ""}',
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
                         ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.send_outlined, size: 18),
-                          onPressed: () => ConfirmationSheet.show(
-                            context,
-                            appointment: apt,
-                            entity: entity,
-                            eventType: eventType,
-                            strings: strings,
+                      ),
+                      // 24-Visit Visual Heatmap Matrix
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (int i = 0;
+                                i < entityAppointments.length;
+                                i++)
+                              Container(
+                                width: 32,
+                                height: 26,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.18),
+                                  borderRadius: BorderRadius.circular(7),
+                                  border: Border.all(
+                                    color: color.withValues(alpha: 0.45),
+                                  ),
+                                ),
+                                child: Text(
+                                  '#${i + 1}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: color,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: ListView.builder(
+                          controller: scrollController,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
                           ),
+                          itemCount: entityAppointments.length,
+                          itemBuilder: (_, idx) {
+                            final apt = entityAppointments[idx];
+                            final visitNum = (apt.visitIndex ?? idx) + 1;
+                            return ListTile(
+                              dense: true,
+                              leading: CircleAvatar(
+                                radius: 14,
+                                backgroundColor: color.withValues(alpha: 0.18),
+                                foregroundColor: color,
+                                child: Text(
+                                  '$visitNum',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              title: Text(
+                                strings.formatDateHeader(apt.timeRange.start),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              subtitle: Text(
+                                strings.formatTimeRange(apt.timeRange),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(
+                                  Icons.send_outlined,
+                                  size: 18,
+                                ),
+                                onPressed: () => ConfirmationSheet.show(
+                                  context,
+                                  appointment: apt,
+                                  entity: entity,
+                                  eventType: eventType,
+                                  strings: strings,
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             );
           },
         );
