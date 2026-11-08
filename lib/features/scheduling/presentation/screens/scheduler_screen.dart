@@ -131,6 +131,7 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
               children: [
                 if (entities.isNotEmpty)
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: selectedEntityId,
                     decoration: InputDecoration(
                       labelText: strings.isPt ? 'Participante' : 'Participant (Entity)',
@@ -326,6 +327,7 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
               children: [
                 if (enrollments.isNotEmpty)
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: selectedEnrollmentId,
                     decoration: InputDecoration(
                       labelText: strings.isPt
@@ -354,6 +356,7 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                   ),
                 const SizedBox(height: 14),
                 DropdownButtonFormField<int>(
+                  isExpanded: true,
                   initialValue: _selectedVisitIndex,
                   decoration: InputDecoration(
                     labelText: strings.isPt
