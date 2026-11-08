@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/l10n/app_strings.dart';
 import 'features/scheduling/presentation/providers/scheduling_providers.dart';
+import 'features/scheduling/presentation/screens/agenda_screen.dart';
+import 'features/scheduling/presentation/screens/entities_screen.dart';
+import 'features/scheduling/presentation/screens/event_types_screen.dart';
+import 'features/scheduling/presentation/screens/scheduler_screen.dart';
+import 'features/scheduling/presentation/screens/settings_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,26 +45,41 @@ class SyncroHomeScreen extends ConsumerStatefulWidget {
 class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen> {
   int _selectedIndex = 0;
 
-  static const _navDestinations = [
-    NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Agenda'),
-    NavigationDestination(icon: Icon(Icons.category), label: 'Event Types'),
-    NavigationDestination(icon: Icon(Icons.people), label: 'Entities'),
-    NavigationDestination(icon: Icon(Icons.auto_awesome), label: 'Scheduler'),
-    NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
+  static const List<Widget> _screens = [
+    AgendaScreen(),
+    EventTypesScreen(),
+    EntitiesScreen(),
+    SchedulerScreen(),
+    SettingsScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final eventTypesAsync = ref.watch(eventTypesStreamProvider);
-    final entitiesAsync = ref.watch(entitiesStreamProvider);
-    final appointmentsAsync = ref.watch(appointmentsStreamProvider);
+    final strings = ref.watch(appStringsProvider);
+    final currentLang = ref.watch(appLanguageProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Syncro Calendar Engine'),
+        title: Text(strings.appTitle),
         actions: [
+          Tooltip(
+            message: 'Toggle EN / PT-BR',
+            child: TextButton.icon(
+              icon: const Icon(Icons.translate, size: 18),
+              label: Text(
+                currentLang == AppLanguage.en ? 'EN' : 'PT',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              onPressed: () {
+                ref.read(appLanguageProvider.notifier).state =
+                    currentLang == AppLanguage.en
+                        ? AppLanguage.ptBr
+                        : AppLanguage.en;
+              },
+            ),
+          ),
           IconButton(
-            tooltip: 'Sync with Device Calendars',
+            tooltip: strings.syncCalendarsTooltip,
             icon: const Icon(Icons.sync),
             onPressed: () async {
               final result =
@@ -78,14 +99,14 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen> {
             },
           ),
           IconButton(
-            tooltip: 'Reset & Re-seed Demo Data',
+            tooltip: strings.resetDemoDataTooltip,
             icon: const Icon(Icons.refresh),
             onPressed: () async {
               await ref.read(demoSeedServiceProvider).resetAndSeed();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Demo scenarios reset & re-seeded!'),
+                  SnackBar(
+                    content: Text(strings.demoResetSuccess),
                   ),
                 );
               }
@@ -93,31 +114,35 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen> {
           ),
         ],
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Active Tab: ${_navDestinations[_selectedIndex].label}',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Event Types: ${eventTypesAsync.valueOrNull?.length ?? 0} • '
-                'Entities: ${entitiesAsync.valueOrNull?.length ?? 0} • '
-                'Appointments: ${appointmentsAsync.valueOrNull?.length ?? 0}',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ],
-          ),
-        ),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _screens,
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (idx) => setState(() => _selectedIndex = idx),
-        destinations: _navDestinations,
+        destinations: [
+          NavigationDestination(
+            icon: const Icon(Icons.calendar_month),
+            label: strings.tabAgenda,
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.category),
+            label: strings.tabEventTypes,
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.people),
+            label: strings.tabEntities,
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.auto_awesome),
+            label: strings.tabScheduler,
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.settings),
+            label: strings.tabSettings,
+          ),
+        ],
       ),
     );
   }

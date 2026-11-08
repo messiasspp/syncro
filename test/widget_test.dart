@@ -6,7 +6,8 @@ import 'package:syncro/features/scheduling/presentation/providers/scheduling_pro
 import 'package:syncro/main.dart';
 
 void main() {
-  testWidgets('SyncroApp renders 5-tab navigation shell and seeds demo data',
+  testWidgets(
+      'SyncroApp renders 5-tab UI, seeds demo data, and toggles EN/PT-BR localization',
       (WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -21,15 +22,50 @@ void main() {
 
     await tester.pumpAndSettle();
 
+    // 1. Verify AppBar & 5 Navigation Destinations in English
     expect(find.text('Syncro Calendar Engine'), findsOneWidget);
     expect(find.text('Agenda'), findsOneWidget);
     expect(find.text('Event Types'), findsOneWidget);
     expect(find.text('Entities'), findsOneWidget);
     expect(find.text('Scheduler'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
+
+    // 2. Verify Agenda Tab shows seeded filter chips & summary stats
+    expect(find.text('Friends Zone'), findsWidgets);
+    expect(find.text('Mounjaro Clinical Study'), findsWidgets);
+    expect(find.text('49'), findsWidgets);
+
+    // 3. Navigate to Event Types tab
+    await tester.tap(find.text('Event Types'));
+    await tester.pumpAndSettle();
     expect(
-      find.textContaining('Event Types: 2 • Entities: 3 • Appointments: 49'),
+      find.text('Event Categories & Scheduling Rules'),
       findsOneWidget,
     );
+
+    // 4. Navigate to Entities tab
+    await tester.tap(find.text('Entities'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Participants, Friends & Patients'),
+      findsOneWidget,
+    );
+    expect(find.text('Mendy'), findsWidgets);
+
+    // 5. Navigate to Scheduler tab
+    await tester.tap(find.text('Scheduler'));
+    await tester.pumpAndSettle();
+    expect(find.text('Smart Slot Finder'), findsOneWidget);
+    expect(find.text('Protocol Cascade'), findsOneWidget);
+
+    // 6. Navigate to Settings tab & toggle EN -> PT-BR
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Language & Time Format'), findsOneWidget);
+
+    await tester.tap(find.text('EN'));
+    await tester.pumpAndSettle();
+    expect(find.text('Syncro • Motor de Agenda'), findsOneWidget);
+    expect(find.text('Idioma e Formato de Hora'), findsOneWidget);
   });
 }
