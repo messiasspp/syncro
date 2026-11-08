@@ -128,6 +128,7 @@ void main() {
       final updatedVisit1 = cascadeResult.updatedAppointments[1];
       final updatedVisit2 = cascadeResult.updatedAppointments[2];
 
+      expect(updatedVisit1.timeRange.start.isAfter(originalVisit1.timeRange.start), true);
       expect(updatedVisit1.timeRange, delayedSlot);
 
       // Visit 2 must now be at least 14 days after the new Visit 1 date (Nov 4 + 14 = Nov 18)

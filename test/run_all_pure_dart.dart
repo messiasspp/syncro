@@ -1,14 +1,19 @@
 import 'dart:io';
+import 'package:syncro/features/scheduling/data/calendar/calendar_client.dart';
+import 'package:syncro/features/scheduling/data/repositories/scheduling_repository.dart';
+import 'package:syncro/features/scheduling/data/seed/demo_seed_service.dart';
 import 'package:syncro/features/scheduling/domain/models/entity.dart';
 import 'package:syncro/features/scheduling/domain/models/event_type.dart';
+import 'package:syncro/features/scheduling/domain/models/external_calendar.dart';
 import 'package:syncro/features/scheduling/domain/models/protocol_enrollment.dart';
 import 'package:syncro/features/scheduling/domain/models/time_range.dart';
 import 'package:syncro/features/scheduling/domain/models/work_schedule.dart';
+import 'package:syncro/features/scheduling/domain/services/calendar_sync_service.dart';
 import 'package:syncro/features/scheduling/domain/services/interval_math.dart';
 import 'package:syncro/features/scheduling/domain/services/protocol_cascade_service.dart';
 import 'package:syncro/features/scheduling/domain/services/slot_finder.dart';
 
-void main() {
+Future<void> main() async {
   stdout.writeln('========================================');
   stdout.writeln('🚀 Running Pure Dart Scheduling Engine Tests');
   stdout.writeln('========================================\n');
@@ -16,9 +21,9 @@ void main() {
   int passed = 0;
   int failed = 0;
 
-  void testCase(String name, void Function() testFn) {
+  Future<void> testCase(String name, Future<void> Function() testFn) async {
     try {
-      testFn();
+      await testFn();
       stdout.writeln('  ✅ PASS: $name');
       passed++;
     } catch (e, st) {
@@ -30,7 +35,7 @@ void main() {
   // --- INTERVAL MATH TESTS ---
   stdout.writeln('📦 [Suite 1: IntervalMath]');
 
-  testCase('IntervalMath: merge overlapping and adjacent ranges', () {
+  await testCase('IntervalMath: merge overlapping and adjacent ranges', () async {
     final base = DateTime(2026, 10, 19, 10, 0);
     final r1 = TimeRange(start: base, end: base.add(const Duration(minutes: 60)));
     final r2 = TimeRange(
@@ -47,7 +52,7 @@ void main() {
     assert(merged[0].start == base && merged[0].end == base.add(const Duration(minutes: 90)));
   });
 
-  testCase('IntervalMath: subtract busy blocks with sweepline', () {
+  await testCase('IntervalMath: subtract busy blocks with sweepline', () async {
     final day = DateTime(2026, 10, 19);
     final available = [
       TimeRange(
@@ -103,7 +108,7 @@ void main() {
     defaultEventTypeId: 'type_friends',
   );
 
-  testCase('Friends Zone: falls back to Saturday when Thursday is blocked', () {
+  await testCase('Friends Zone: falls back to Saturday when Thursday is blocked', () async {
     final searchRange = TimeRange(
       start: DateTime(2026, 10, 19, 0, 0),
       end: DateTime(2026, 10, 25, 23, 59),
@@ -155,7 +160,7 @@ void main() {
     defaultEventTypeId: 'type_mounjaro',
   );
 
-  testCase('Mounjaro Study: generates initial 24-visit roadmap with 14-day cadence', () {
+  await testCase('Mounjaro Study: generates initial 24-visit roadmap with 14-day cadence', () async {
     final enrollment = ProtocolEnrollment(
       id: 'enrollment_p101',
       entityId: patient101.id,
@@ -178,7 +183,7 @@ void main() {
     assert(visits.last.visitIndex == 23, 'Last visit index is 23');
   });
 
-  testCase('Mounjaro Study: cascading shift updates downstream visits', () {
+  await testCase('Mounjaro Study: cascading shift updates downstream visits', () async {
     final enrollment = ProtocolEnrollment(
       id: 'enrollment_p101',
       entityId: patient101.id,
@@ -214,6 +219,67 @@ void main() {
     assert(result.shiftedVisitIndices.contains(1), 'Visit 1 shifted');
     assert(result.shiftedVisitIndices.contains(2), 'Visit 2 cascaded');
     assert(result.updatedAppointments[1].timeRange == delayedSlot, 'Visit 1 time updated');
+  });
+
+  // --- SUITE 4: REPOSITORY & SEED SERVICE ---
+  stdout.writeln('\n📦 [Suite 4: Phase 3 - Repository & DemoSeedService]');
+
+  await testCase('DemoSeedService: populates 2 event types, 3 entities, 2 enrollments, 49 non-colliding appointments', () async {
+    final repository = InMemorySchedulingRepository();
+    final seeder = DemoSeedService(repository);
+
+    final seeded = await seeder.seedIfEmpty(referenceDate: DateTime(2026, 10, 19));
+    assert(seeded == true, 'Should seed when repository is empty');
+
+    final appointments = await repository.getAllAppointments();
+    assert(appointments.length == 49, 'Should generate 49 total appointments (24 + 24 + 1)');
+
+    for (int i = 0; i < appointments.length - 1; i++) {
+      assert(
+        !appointments[i].timeRange.overlaps(appointments[i + 1].timeRange),
+        'Appointments must never overlap',
+      );
+    }
+  });
+
+  // --- SUITE 5: CALENDAR SYNC SERVICE ---
+  stdout.writeln('\n📦 [Suite 5: Phase 4 - CalendarSyncService & Sub-Calendars]');
+
+  await testCase('CalendarSyncService: provisions dedicated sub-calendars and merges external busy slots', () async {
+    final repository = InMemorySchedulingRepository();
+    final calendarClient = InMemoryCalendarClient();
+    final seeder = DemoSeedService(repository);
+    final syncService = CalendarSyncService(
+      repository: repository,
+      calendarClient: calendarClient,
+    );
+
+    await seeder.resetAndSeed(referenceDate: DateTime(2026, 10, 19));
+
+    final syncResult = await syncService.syncAll();
+    assert(syncResult.isSuccess, 'Sync should succeed without errors');
+    assert(syncResult.createdCalendarsCount == 2, 'Should create 2 dedicated sub-calendars');
+    assert(syncResult.pushedAppointmentsCount == 48, 'Should push 48 Mounjaro visits');
+
+    // Add external busy event and verify fetchMergedBusySlots includes it
+    await calendarClient.createOrUpdateEvent(
+      ExternalCalendarEvent(
+        calendarId: 'cal_personal_primary',
+        title: 'External Conflict',
+        timeRange: TimeRange(
+          start: DateTime(2026, 10, 22, 19, 0),
+          end: DateTime(2026, 10, 22, 21, 0),
+        ),
+      ),
+    );
+
+    final mergedBusy = await syncService.fetchMergedBusySlots(
+      TimeRange(
+        start: DateTime(2026, 10, 19, 0, 0),
+        end: DateTime(2026, 10, 25, 23, 59),
+      ),
+    );
+    assert(mergedBusy.isNotEmpty, 'Should return merged internal and external busy intervals');
   });
 
   stdout.writeln('\n========================================');

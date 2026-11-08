@@ -1,4 +1,3 @@
-import '../models/appointment.dart';
 import '../models/entity.dart';
 import '../models/event_type.dart';
 import '../models/time_range.dart';

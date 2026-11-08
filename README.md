@@ -20,7 +20,7 @@
 ## Architecture & Documentation
 
 For the complete architectural design, entity-relationship diagrams, interval scheduling algorithms, and rollout phases, see:
-📖 **[SPECIFICATION.md](file:///home/msz/Development/syncro/SPECIFICATION.md)**
+📖 **[SPECIFICATION.md](SPECIFICATION.md)**
 
 ---
 
@@ -59,8 +59,8 @@ asdf global flutter latest
 ## Roadmap
 
 - [x] Architectural Specification & Design System
-- [ ] Phase 1: Environment & Project Bootstrap
-- [ ] Phase 2: Core Domain Logic & Scheduling Engine
-- [ ] Phase 3: Local Drift SQLite Storage & Seed Scenarios
-- [ ] Phase 4: Device Calendar Integration
+- [x] Phase 1: Environment & Project Bootstrap
+- [x] Phase 2: Core Domain Logic & Scheduling Engine
+- [x] Phase 3: Local Drift SQLite Storage & Seed Scenarios
+- [x] Phase 4: Device Calendar Integration
 - [ ] Phase 5: Flutter 5-Tab UI (Agenda, Event Types, Entities, Scheduler, Settings)

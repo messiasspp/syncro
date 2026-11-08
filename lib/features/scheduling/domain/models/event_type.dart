@@ -50,6 +50,41 @@ class DayTimeWindow {
       end: DateTime(date.year, date.month, date.day, endHour, endMinute),
     );
   }
+
+  /// Serializes this window to a JSON-compatible map for SQLite storage.
+  Map<String, dynamic> toJson() => {
+        'dayOfWeek': dayOfWeek,
+        'startHour': startHour,
+        'startMinute': startMinute,
+        'endHour': endHour,
+        'endMinute': endMinute,
+      };
+
+  /// Reconstructs a [DayTimeWindow] from a decoded JSON map.
+  factory DayTimeWindow.fromJson(Map<String, dynamic> json) {
+    return DayTimeWindow(
+      dayOfWeek: json['dayOfWeek'] as int,
+      startHour: json['startHour'] as int,
+      startMinute: (json['startMinute'] as int?) ?? 0,
+      endHour: json['endHour'] as int,
+      endMinute: (json['endMinute'] as int?) ?? 0,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DayTimeWindow &&
+          runtimeType == other.runtimeType &&
+          dayOfWeek == other.dayOfWeek &&
+          startHour == other.startHour &&
+          startMinute == other.startMinute &&
+          endHour == other.endHour &&
+          endMinute == other.endMinute;
+
+  @override
+  int get hashCode =>
+      Object.hash(dayOfWeek, startHour, startMinute, endHour, endMinute);
 }
 
 /// Template configuration defining the rules, buffers, and allowed times for a class of events.
@@ -79,4 +114,32 @@ class EventType {
     this.allowedTimeWindows = const [],
     this.calendarMappingId,
   });
+
+  EventType copyWith({
+    String? id,
+    String? name,
+    String? colorHex,
+    WorkHoursConstraint? workHoursConstraint,
+    Duration? minDuration,
+    Duration? maxDuration,
+    Duration? bufferBefore,
+    Duration? bufferAfter,
+    SchedulingMode? schedulingMode,
+    List<DayTimeWindow>? allowedTimeWindows,
+    String? calendarMappingId,
+  }) {
+    return EventType(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      colorHex: colorHex ?? this.colorHex,
+      workHoursConstraint: workHoursConstraint ?? this.workHoursConstraint,
+      minDuration: minDuration ?? this.minDuration,
+      maxDuration: maxDuration ?? this.maxDuration,
+      bufferBefore: bufferBefore ?? this.bufferBefore,
+      bufferAfter: bufferAfter ?? this.bufferAfter,
+      schedulingMode: schedulingMode ?? this.schedulingMode,
+      allowedTimeWindows: allowedTimeWindows ?? this.allowedTimeWindows,
+      calendarMappingId: calendarMappingId ?? this.calendarMappingId,
+    );
+  }
 }

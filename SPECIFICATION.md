@@ -168,18 +168,18 @@ To enable immediate testing out of the box, the app will initialize with pre-see
 
 ## 7. Phased Implementation Roadmap
 
-- [ ] **Phase 1: Environment & Project Bootstrap**
+- [x] **Phase 1: Environment & Project Bootstrap**
   - Install Flutter toolchain via asdf.
   - Initialize Flutter project with support for Android, iOS, macOS, and Linux/Windows.
   - Set up package dependencies: `drift`, `device_calendar`, `provider`/`bloc`, `intl`, `uuid`.
-- [ ] **Phase 2: Core Domain Logic & Scheduling Engine**
+- [x] **Phase 2: Core Domain Logic & Scheduling Engine**
   - Implement models: `EventType`, `Entity`, `Appointment`, `WorkSchedule`, `ProtocolRoadmap`.
   - Implement slot finder algorithm with conflict checks, buffer offsets, and scoring.
   - Unit tests for single meeting scheduling and cascading protocol shifts.
-- [ ] **Phase 3: Local Storage & Seed Data**
+- [x] **Phase 3: Local Storage & Seed Data**
   - Configure Drift SQLite database schema and DAOs.
   - Add demo seeder for "Friends Zone (Mendy)" and "Mounjaro Study (Patients 101/102)".
-- [ ] **Phase 4: Calendar Sync Layer**
+- [x] **Phase 4: Calendar Sync Layer**
   - Integrate `device_calendar` plugin for iOS & Android.
   - Implement dedicated sub-calendar creation and bi-directional event read/write.
 - [ ] **Phase 5: User Interface Implementation**
