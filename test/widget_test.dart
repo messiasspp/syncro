@@ -7,7 +7,7 @@ import 'package:syncro/main.dart';
 
 void main() {
   testWidgets(
-      'SyncroApp renders 5-tab UI, seeds demo data, and toggles EN/PT-BR localization',
+      'SyncroApp renders 5-tab UI, seeds demo data, and toggles EN/PT-BR localization in Settings',
       (WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -22,9 +22,9 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    // 1. Verify AppBar & 5 Navigation Destinations in English
-    expect(find.text('Syncro Calendar Engine'), findsOneWidget);
-    expect(find.text('Agenda'), findsOneWidget);
+    // 1. Verify AppBar ('Syncro') & 5 Navigation Destinations in English
+    expect(find.text('Syncro'), findsOneWidget);
+    expect(find.text('Agenda'), findsWidgets);
     expect(find.text('Event Types'), findsOneWidget);
     expect(find.text('Entities'), findsOneWidget);
     expect(find.text('Scheduler'), findsOneWidget);
@@ -58,14 +58,14 @@ void main() {
     expect(find.text('Smart Slot Finder'), findsOneWidget);
     expect(find.text('Protocol Cascade'), findsOneWidget);
 
-    // 6. Navigate to Settings tab & toggle EN -> PT-BR
+    // 6. Navigate to Settings tab & toggle EN -> PT-BR inside Settings
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
     expect(find.text('Language & Time Format'), findsOneWidget);
 
-    await tester.tap(find.text('EN'));
+    await tester.tap(find.text('Português (Brasil)'));
     await tester.pumpAndSettle();
-    expect(find.text('Syncro • Motor de Agenda'), findsOneWidget);
+    expect(find.text('Syncro'), findsOneWidget);
     expect(find.text('Idioma e Formato de Hora'), findsOneWidget);
   });
 }

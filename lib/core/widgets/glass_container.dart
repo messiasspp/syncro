@@ -267,92 +267,316 @@ class GlassNavDestination {
   });
 }
 
-/// Detached floating glassmorphic pill navigation bar with real-time Gaussian blur
-/// and glowing active tab capsule.
+/// Detached floating glassmorphic pill navigation bar with:
+/// 1. A morphing primary Floating Action Button that floats above the bar when
+///    at the top of the screen and **docks/sticks onto the right edge of the bar**
+///    when scrolling down.
+/// 2. A secondary **"Scroll to Top" (`^`) frosted glass button** that springs
+///    into view above the docked bar whenever the user scrolls down.
 class FloatingGlassNavBar extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
   final List<GlassNavDestination> destinations;
+  final bool isActionDocked;
+  final String? actionLabel;
+  final IconData actionIcon;
+  final VoidCallback? onActionTap;
+  final VoidCallback? onScrollToTopTap;
 
   const FloatingGlassNavBar({
     super.key,
     required this.selectedIndex,
     required this.onDestinationSelected,
     required this.destinations,
+    this.isActionDocked = false,
+    this.actionLabel,
+    this.actionIcon = Icons.add_rounded,
+    this.onActionTap,
+    this.onScrollToTopTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = Theme.of(context).colorScheme.primary;
+    final hasAction = actionLabel != null && onActionTap != null;
+    final docked = hasAction && isActionDocked;
+    final showScrollToTop = isActionDocked && onScrollToTopTap != null;
 
     return SafeArea(
       top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-        child: Container(
-          height: 68,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(34),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
-                blurRadius: 28,
-                offset: const Offset(0, 10),
-              ),
-              BoxShadow(
-                color: primary.withValues(alpha: isDark ? 0.16 : 0.08),
-                blurRadius: 24,
-                spreadRadius: -2,
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(34),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+      child: SizedBox(
+        height: (hasAction || showScrollToTop) ? 148 : 82,
+        child: Stack(
+          alignment: Alignment.bottomCenter,
+          clipBehavior: Clip.none,
+          children: [
+            // 1. Main 5-Tab Floating Glass Bar (narrows on right when primary FAB docks into it)
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeOutCubic,
+              left: 14,
+              right: docked ? 78 : 14,
+              bottom: 12,
+              height: 68,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(34),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.16)
-                        : SyncroColors.electricIndigo.withValues(alpha: 0.18),
-                    width: 1.2,
+                  borderRadius: BorderRadius.horizontal(
+                    left: const Radius.circular(34),
+                    right: Radius.circular(docked ? 18 : 34),
                   ),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: isDark
-                        ? [
-                            const Color(0xFF162038).withValues(alpha: 0.86),
-                            const Color(0xFF0E1526).withValues(alpha: 0.78),
-                          ]
-                        : [
-                            Colors.white.withValues(alpha: 0.90),
-                            const Color(0xFFEEF2FF).withValues(alpha: 0.84),
-                          ],
-                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color:
+                          Colors.black.withValues(alpha: isDark ? 0.45 : 0.12),
+                      blurRadius: 28,
+                      offset: const Offset(0, 10),
+                    ),
+                    BoxShadow(
+                      color: primary.withValues(alpha: isDark ? 0.16 : 0.08),
+                      blurRadius: 24,
+                      spreadRadius: -2,
+                    ),
+                  ],
                 ),
-                child: Row(
-                  children: [
-                    for (int i = 0; i < destinations.length; i++)
-                      Expanded(
-                        child: _GlassNavButton(
-                          destination: destinations[i],
-                          isSelected: i == selectedIndex,
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            onDestinationSelected(i);
-                          },
+                child: ClipRRect(
+                  borderRadius: BorderRadius.horizontal(
+                    left: const Radius.circular(34),
+                    right: Radius.circular(docked ? 18 : 34),
+                  ),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.horizontal(
+                          left: const Radius.circular(34),
+                          right: Radius.circular(docked ? 18 : 34),
+                        ),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.16)
+                              : SyncroColors.electricIndigo
+                                  .withValues(alpha: 0.18),
+                          width: 1.2,
+                        ),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: isDark
+                              ? [
+                                  const Color(0xFF162038)
+                                      .withValues(alpha: 0.86),
+                                  const Color(0xFF0E1526)
+                                      .withValues(alpha: 0.78),
+                                ]
+                              : [
+                                  Colors.white.withValues(alpha: 0.90),
+                                  const Color(0xFFEEF2FF)
+                                      .withValues(alpha: 0.84),
+                                ],
                         ),
                       ),
-                  ],
+                      child: Row(
+                        children: [
+                          for (int i = 0; i < destinations.length; i++)
+                            Expanded(
+                              child: _GlassNavButton(
+                                destination: destinations[i],
+                                isSelected: i == selectedIndex,
+                                isCompact: docked,
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  onDestinationSelected(i);
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
+
+            // 2. Secondary "Scroll to Top" Frosted Glass Button:
+            // Appears above the right side of the bar (bottom: 90) when the primary
+            // action button docks into the bar!
+            Positioned(
+              right: 14,
+              bottom: 90,
+              child: IgnorePointer(
+                ignoring: !showScrollToTop,
+                child: AnimatedScale(
+                  scale: showScrollToTop ? 1.0 : 0.4,
+                  duration: const Duration(milliseconds: 280),
+                  curve: showScrollToTop
+                      ? Curves.easeOutBack
+                      : Curves.easeInCubic,
+                  child: AnimatedOpacity(
+                    opacity: showScrollToTop ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 220),
+                    child: AnimatedScaleTap(
+                      onTap: onScrollToTopTap,
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(
+                                alpha: isDark ? 0.40 : 0.12,
+                              ),
+                              blurRadius: 18,
+                              offset: const Offset(0, 6),
+                            ),
+                            BoxShadow(
+                              color: SyncroColors.clinicalEmerald
+                                  .withValues(alpha: 0.30),
+                              blurRadius: 14,
+                            ),
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                            child: Container(
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: SyncroColors.clinicalEmerald
+                                      .withValues(alpha: 0.65),
+                                  width: 1.3,
+                                ),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: isDark
+                                      ? [
+                                          const Color(0xFF16243E)
+                                              .withValues(alpha: 0.88),
+                                          const Color(0xFF0F192C)
+                                              .withValues(alpha: 0.82),
+                                        ]
+                                      : [
+                                          Colors.white.withValues(alpha: 0.92),
+                                          const Color(0xFFE6FFFA)
+                                              .withValues(alpha: 0.86),
+                                        ],
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.keyboard_double_arrow_up_rounded,
+                                color: SyncroColors.clinicalEmerald,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // 3. Primary Morphing Floating Action Button:
+            // - Undocked (top of scroll): Expanded pill floating ABOVE the bar (bottom: 90)
+            // - Docked (scrolled down): Slides down to bottom: 12 and sticks onto the right end of the bar!
+            if (hasAction)
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutCubic,
+                right: 14,
+                bottom: docked ? 12 : 90,
+                height: docked ? 68 : 48,
+                child: AnimatedScaleTap(
+                  onTap: onActionTap,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.horizontal(
+                        left: Radius.circular(docked ? 18 : 26),
+                        right: const Radius.circular(34),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: primary.withValues(alpha: 0.45),
+                          blurRadius: 20,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.horizontal(
+                        left: Radius.circular(docked ? 18 : 26),
+                        right: const Radius.circular(34),
+                      ),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 320),
+                          curve: Curves.easeOutCubic,
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.horizontal(
+                              left: Radius.circular(docked ? 18 : 26),
+                              right: const Radius.circular(34),
+                            ),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.35),
+                              width: 1.2,
+                            ),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                primary,
+                                SyncroColors.amethystViolet,
+                              ],
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                actionIcon,
+                                color: Colors.white,
+                                size: docked ? 24 : 20,
+                              ),
+                              AnimatedSize(
+                                duration: const Duration(milliseconds: 260),
+                                curve: Curves.easeOutCubic,
+                                child: docked
+                                    ? const SizedBox.shrink()
+                                    : Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const SizedBox(width: 7),
+                                          Text(
+                                            actionLabel!,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 13.5,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -362,11 +586,13 @@ class FloatingGlassNavBar extends StatelessWidget {
 class _GlassNavButton extends StatelessWidget {
   final GlassNavDestination destination;
   final bool isSelected;
+  final bool isCompact;
   final VoidCallback onTap;
 
   const _GlassNavButton({
     required this.destination,
     required this.isSelected,
+    this.isCompact = false,
     required this.onTap,
   });
 
@@ -384,7 +610,7 @@ class _GlassNavButton extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 240),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 3),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(26),
           gradient: isSelected
@@ -415,7 +641,7 @@ class _GlassNavButton extends StatelessWidget {
               curve: Curves.easeOutBack,
               child: Icon(
                 isSelected ? destination.activeIcon : destination.icon,
-                size: 21,
+                size: isCompact ? 19.5 : 21,
                 color: isSelected ? primary : unselectedColor,
               ),
             ),
@@ -425,7 +651,7 @@ class _GlassNavButton extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 10.5,
+                fontSize: isCompact ? 9.5 : 10.5,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 color: isSelected
                     ? (isDark ? Colors.white : primary)

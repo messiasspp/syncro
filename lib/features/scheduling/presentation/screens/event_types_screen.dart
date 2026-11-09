@@ -19,63 +19,31 @@ class EventTypesScreen extends ConsumerWidget {
     final eventTypes = eventTypesAsync.valueOrNull ?? const <EventType>[];
     final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight + 14;
 
-    return Stack(
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 155),
       children: [
-        ListView(
-          physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(16, topPadding, 16, 155),
-          children: [
-            Text(
-              strings.eventTypesHeader,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.2,
-                  ),
-            ),
-            const SizedBox(height: 14),
-            for (int i = 0; i < eventTypes.length; i++)
-              StaggeredReveal(
-                index: i,
-                child: _EventTypeGlassCard(
-                  eventType: eventTypes[i],
-                  strings: strings,
-                ),
+        Text(
+          strings.eventTypesHeader,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
               ),
-          ],
         ),
-        Positioned(
-          right: 16,
-          bottom: 112,
-          child: AnimatedScaleTap(
-            onTap: () => _showCreateEventTypeDialog(context, ref, strings),
-            child: GlassContainer(
-              borderRadius: 26,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-              tintColor: Theme.of(context).colorScheme.primary,
-              borderColor: Colors.white.withValues(alpha: 0.32),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.add_rounded, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    strings.newEventTypeButton,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13.5,
-                    ),
-                  ),
-                ],
-              ),
+        const SizedBox(height: 14),
+        for (int i = 0; i < eventTypes.length; i++)
+          StaggeredReveal(
+            index: i,
+            child: _EventTypeGlassCard(
+              eventType: eventTypes[i],
+              strings: strings,
             ),
           ),
-        ),
       ],
     );
   }
 
-  Future<void> _showCreateEventTypeDialog(
+  static Future<void> showCreateEventTypeDialog(
     BuildContext context,
     WidgetRef ref,
     AppStrings strings,

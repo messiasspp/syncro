@@ -43,8 +43,8 @@ class AppStrings {
   String get tabSettings => isPt ? 'Ajustes' : 'Settings';
 
   // App Bar & Global Actions
-  String get appTitle =>
-      isPt ? 'Syncro • Motor de Agenda' : 'Syncro Calendar Engine';
+  String get appTitle => 'Syncro';
+  String get quickScheduleButton => isPt ? 'Agendar' : 'Schedule';
   String get syncCalendarsTooltip => isPt
       ? 'Sincronizar com Calendários do Dispositivo'
       : 'Sync with Device Calendars';

@@ -37,77 +37,36 @@ class EntitiesScreen extends ConsumerWidget {
     final enrollmentByEntityId = {for (final p in enrollments) p.entityId: p};
     final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight + 14;
 
-    return Stack(
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 155),
       children: [
-        ListView(
-          physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(16, topPadding, 16, 155),
-          children: [
-            Text(
-              strings.entitiesHeader,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.2,
-                  ),
-            ),
-            const SizedBox(height: 14),
-            for (int i = 0; i < entities.length; i++)
-              StaggeredReveal(
-                index: i,
-                child: _EntityGlassCard(
-                  entity: entities[i],
-                  eventType: eventTypeById[entities[i].defaultEventTypeId],
-                  enrollment: enrollmentByEntityId[entities[i].id],
-                  entityAppointments: appointments
-                      .where((a) => a.entityId == entities[i].id)
-                      .toList(),
-                  strings: strings,
-                ),
+        Text(
+          strings.entitiesHeader,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
               ),
-          ],
         ),
-        Positioned(
-          right: 16,
-          bottom: 112,
-          child: AnimatedScaleTap(
-            onTap: () => _showCreateEntityDialog(
-              context,
-              ref,
-              strings,
-              eventTypes,
-            ),
-            child: GlassContainer(
-              borderRadius: 26,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-              tintColor: Theme.of(context).colorScheme.primary,
-              borderColor: Colors.white.withValues(alpha: 0.32),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.person_add_alt_1_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    strings.newEntityButton,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13.5,
-                    ),
-                  ),
-                ],
-              ),
+        const SizedBox(height: 14),
+        for (int i = 0; i < entities.length; i++)
+          StaggeredReveal(
+            index: i,
+            child: _EntityGlassCard(
+              entity: entities[i],
+              eventType: eventTypeById[entities[i].defaultEventTypeId],
+              enrollment: enrollmentByEntityId[entities[i].id],
+              entityAppointments: appointments
+                  .where((a) => a.entityId == entities[i].id)
+                  .toList(),
+              strings: strings,
             ),
           ),
-        ),
       ],
     );
   }
 
-  Future<void> _showCreateEntityDialog(
+  static Future<void> showCreateEntityDialog(
     BuildContext context,
     WidgetRef ref,
     AppStrings strings,
