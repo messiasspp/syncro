@@ -11,7 +11,14 @@ import '../../domain/models/appointment.dart';
 import '../../domain/models/entity.dart';
 import '../../domain/models/event_type.dart';
 import '../providers/scheduling_providers.dart';
+import '../widgets/appointment_detail_sheet.dart';
 import '../widgets/confirmation_sheet.dart';
+
+enum AgendaViewMode {
+  timeline,
+  month,
+  week,
+}
 
 /// Tab 1: Redesigned Glassmorphic Agenda & Interactive Timeline View.
 class AgendaScreen extends ConsumerStatefulWidget {
@@ -22,6 +29,8 @@ class AgendaScreen extends ConsumerStatefulWidget {
 }
 
 class _AgendaScreenState extends ConsumerState<AgendaScreen> {
+  AgendaViewMode _viewMode = AgendaViewMode.timeline;
+  DateTime _focusedDate = DateTime(2026, 10, 19);
   String? _selectedEventTypeId;
   DateTime? _selectedDateFilter;
 
@@ -42,6 +51,20 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
     _pager.detach();
     super.dispose();
   }
+
+  DateTime _startOfWeek(DateTime date) {
+    return DateTime(date.year, date.month, date.day)
+        .subtract(Duration(days: date.weekday - 1));
+  }
+
+  DateTime _endOfWeek(DateTime date) {
+    return _startOfWeek(date).add(
+      const Duration(days: 6, hours: 23, minutes: 59, seconds: 59),
+    );
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   /// Applies a filter change and restarts the window from the first page.
   void _applyFilter(VoidCallback change) {
@@ -96,14 +119,35 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
       for (final e in dotSetsByDate.entries) e.key: e.value.toList(),
     };
 
-    final filtered = _selectedDateFilter == null
-        ? filteredByType
-        : filteredByType.where((apt) {
-            final s = apt.timeRange.start;
-            return s.year == _selectedDateFilter!.year &&
-                s.month == _selectedDateFilter!.month &&
-                s.day == _selectedDateFilter!.day;
-          }).toList();
+    final filtered = switch (_viewMode) {
+      AgendaViewMode.timeline => _selectedDateFilter == null
+          ? filteredByType
+          : filteredByType
+              .where((apt) =>
+                  _isSameDay(apt.timeRange.start, _selectedDateFilter!))
+              .toList(),
+      AgendaViewMode.month => _selectedDateFilter != null
+          ? filteredByType
+              .where((apt) =>
+                  _isSameDay(apt.timeRange.start, _selectedDateFilter!))
+              .toList()
+          : filteredByType.where((apt) {
+              final s = apt.timeRange.start;
+              return s.year == _focusedDate.year &&
+                  s.month == _focusedDate.month;
+            }).toList(),
+      AgendaViewMode.week => _selectedDateFilter != null
+          ? filteredByType
+              .where((apt) =>
+                  _isSameDay(apt.timeRange.start, _selectedDateFilter!))
+              .toList()
+          : filteredByType.where((apt) {
+              final s = apt.timeRange.start;
+              final start = _startOfWeek(_focusedDate);
+              final end = _endOfWeek(_focusedDate);
+              return !s.isBefore(start) && !s.isAfter(end);
+            }).toList(),
+    };
 
     final confirmedCount = allAppointments
         .where((a) => a.status == AppointmentStatus.confirmed)
@@ -185,7 +229,18 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                 ),
                 const SizedBox(height: 14),
 
-                // 2. Category Filter Strip
+                // 2. View Mode Selector (Timeline, Month Grid, Week Matrix)
+                _ViewModeSegmentedSelector(
+                  currentMode: _viewMode,
+                  onModeChanged: (mode) => _applyFilter(() {
+                    _viewMode = mode;
+                    _selectedDateFilter = null;
+                  }),
+                  strings: strings,
+                ),
+                const SizedBox(height: 12),
+
+                // 3. Category Filter Strip
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
@@ -218,51 +273,185 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // 3. Interactive Horizontal Date Scroller Ribbon
-                if (distinctDates.isNotEmpty)
-                  SizedBox(
-                    height: 66,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: distinctDates.length + 1,
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
-                      itemBuilder: (context, idx) {
-                        if (idx == 0) {
-                          final isAllSelected = _selectedDateFilter == null;
-                          return _DateRibbonChip(
-                            topText: strings.isPt ? 'VER' : 'VIEW',
-                            middleText: strings.isPt ? 'Tudo' : 'All',
-                            bottomText: '${filteredByType.length}',
-                            isSelected: isAllSelected,
-                            dotColors: const [
-                              SyncroColors.electricIndigo,
-                              SyncroColors.clinicalEmerald,
-                            ],
-                            onTap: () =>
-                                _applyFilter(() => _selectedDateFilter = null),
-                          );
-                        }
-                        final date = distinctDates[idx - 1];
-                        final isSelected = _selectedDateFilter != null &&
-                            _selectedDateFilter!.year == date.year &&
-                            _selectedDateFilter!.month == date.month &&
-                            _selectedDateFilter!.day == date.day;
-                        final dots = dotsByDate[date] ?? const <Color>[];
+                // 4. Interactive Presentation: Timeline Ribbon, Month Matrix, or Week Matrix
+                switch (_viewMode) {
+                  AgendaViewMode.timeline => distinctDates.isNotEmpty
+                      ? SizedBox(
+                          height: 66,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: distinctDates.length + 1,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(width: 8),
+                            itemBuilder: (context, idx) {
+                              if (idx == 0) {
+                                final isAllSelected =
+                                    _selectedDateFilter == null;
+                                return _DateRibbonChip(
+                                  topText: strings.isPt ? 'VER' : 'VIEW',
+                                  middleText: strings.isPt ? 'Tudo' : 'All',
+                                  bottomText: '${filteredByType.length}',
+                                  isSelected: isAllSelected,
+                                  dotColors: const [
+                                    SyncroColors.electricIndigo,
+                                    SyncroColors.clinicalEmerald,
+                                  ],
+                                  onTap: () => _applyFilter(
+                                      () => _selectedDateFilter = null),
+                                );
+                              }
+                              final date = distinctDates[idx - 1];
+                              final isSelected = _selectedDateFilter != null &&
+                                  _selectedDateFilter!.year == date.year &&
+                                  _selectedDateFilter!.month == date.month &&
+                                  _selectedDateFilter!.day == date.day;
+                              final dots = dotsByDate[date] ?? const <Color>[];
 
-                        return _DateRibbonChip(
-                          topText: strings
-                              .weekdayName(date.weekday, short: true)
-                              .toUpperCase(),
-                          middleText: '${date.day}',
-                          bottomText: DateFormat('MMM').format(date),
-                          isSelected: isSelected,
-                          dotColors: dots,
-                          onTap: () => _applyFilter(() {
-                            _selectedDateFilter = isSelected ? null : date;
-                          }),
-                        );
+                              return _DateRibbonChip(
+                                topText: strings
+                                    .weekdayName(date.weekday, short: true)
+                                    .toUpperCase(),
+                                middleText: '${date.day}',
+                                bottomText: DateFormat('MMM').format(date),
+                                isSelected: isSelected,
+                                dotColors: dots,
+                                onTap: () => _applyFilter(() {
+                                  _selectedDateFilter =
+                                      isSelected ? null : date;
+                                }),
+                              );
+                            },
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                  AgendaViewMode.month => _GlassMonthCalendarMatrix(
+                      focusedMonth: _focusedDate,
+                      selectedDate: _selectedDateFilter,
+                      dotsByDate: dotsByDate,
+                      strings: strings,
+                      onDateSelected: (date) {
+                        _applyFilter(() {
+                          if (_selectedDateFilter != null &&
+                              _isSameDay(_selectedDateFilter!, date)) {
+                            _selectedDateFilter = null;
+                          } else {
+                            _selectedDateFilter = date;
+                          }
+                        });
                       },
+                      onMonthChanged: (newMonth) {
+                        _applyFilter(() {
+                          _focusedDate = newMonth;
+                          _selectedDateFilter = null;
+                        });
+                      },
+                      onTodayTap: () {
+                        _applyFilter(() {
+                          _focusedDate = DateTime(2026, 10, 19);
+                          _selectedDateFilter = DateTime(2026, 10, 19);
+                        });
+                      },
+                    ),
+                  AgendaViewMode.week => _GlassWeekMatrix(
+                      focusedDate: _focusedDate,
+                      selectedDate: _selectedDateFilter,
+                      dotsByDate: dotsByDate,
+                      appointments: filteredByType,
+                      strings: strings,
+                      onDateSelected: (date) {
+                        _applyFilter(() {
+                          if (_selectedDateFilter != null &&
+                              _isSameDay(_selectedDateFilter!, date)) {
+                            _selectedDateFilter = null;
+                          } else {
+                            _selectedDateFilter = date;
+                          }
+                        });
+                      },
+                      onWeekChanged: (newDate) {
+                        _applyFilter(() {
+                          _focusedDate = newDate;
+                          _selectedDateFilter = null;
+                        });
+                      },
+                      onCurrentWeekTap: () {
+                        _applyFilter(() {
+                          _focusedDate = DateTime(2026, 10, 19);
+                          _selectedDateFilter = DateTime(2026, 10, 19);
+                        });
+                      },
+                    ),
+                },
+
+                // Active Day Filter Chip (when a specific day is clicked)
+                if (_selectedDateFilter != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 5.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.event_available_rounded,
+                                size: 14,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                strings
+                                    .formatDateHeader(_selectedDateFilter!),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color:
+                                      Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () => _applyFilter(
+                                    () => _selectedDateFilter = null),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary
+                                        .withValues(alpha: 0.2),
+                                  ),
+                                  child: Icon(
+                                    Icons.close_rounded,
+                                    size: 13,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
               ],
@@ -277,10 +466,39 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.all(32),
-                child: Text(
-                  strings.noAppointmentsFound,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyLarge,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _selectedDateFilter != null
+                          ? Icons.event_available_rounded
+                          : Icons.event_busy_rounded,
+                      size: 46,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.5),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      _selectedDateFilter != null
+                          ? strings.noAppointmentsForSelectedDay
+                          : strings.noAppointmentsFound,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    if (_selectedDateFilter != null) ...[
+                      const SizedBox(height: 14),
+                      FilledButton.tonalIcon(
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: Text(strings.clearFilter),
+                        onPressed: () =>
+                            _applyFilter(() => _selectedDateFilter = null),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -674,7 +892,7 @@ class _TimelineAppointmentRow extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       borderRadius: 18,
       borderColor: categoryColor.withValues(alpha: isSuggested ? 0.50 : 0.30),
-      onTap: () => ConfirmationSheet.show(
+      onTap: () => AppointmentDetailSheet.show(
         context,
         appointment: appointment,
         entity: entity,
@@ -802,6 +1020,17 @@ class _TimelineAppointmentRow extends StatelessWidget {
                   onPressed: onConfirm,
                 ),
               IconButton(
+                tooltip: strings.editAppointmentAction,
+                icon: const Icon(Icons.edit_calendar_rounded, size: 18),
+                onPressed: () => AppointmentDetailSheet.show(
+                  context,
+                  appointment: appointment,
+                  entity: entity,
+                  eventType: eventType,
+                  strings: strings,
+                ),
+              ),
+              IconButton(
                 tooltip: strings.shareAction,
                 icon: const Icon(Icons.share_outlined, size: 18),
                 onPressed: () => ConfirmationSheet.show(
@@ -818,44 +1047,85 @@ class _TimelineAppointmentRow extends StatelessWidget {
       ),
     );
 
-    if (isSuggested) {
-      cardContent = Dismissible(
-        key: ValueKey('swipe_${appointment.id}'),
-        direction: DismissDirection.startToEnd,
-        confirmDismiss: (_) async {
+    // Interactive Dual-Direction Swipe:
+    // Swipe Right -> Confirm / Mark Done
+    // Swipe Left -> Edit & Reschedule
+    cardContent = Dismissible(
+      key: ValueKey('swipe_${appointment.id}'),
+      direction: DismissDirection.horizontal,
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.startToEnd) {
+          HapticFeedback.mediumImpact();
           onConfirm();
-          return false;
-        },
-        background: Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          alignment: Alignment.centerLeft,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: LinearGradient(
-              colors: [
-                SyncroColors.clinicalEmerald.withValues(alpha: 0.85),
-                SyncroColors.electricIndigo.withValues(alpha: 0.65),
-              ],
-            ),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.verified_rounded, color: Colors.white),
-              const SizedBox(width: 8),
-              Text(
-                strings.confirmAction,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+        } else if (direction == DismissDirection.endToStart) {
+          HapticFeedback.mediumImpact();
+          AppointmentDetailSheet.show(
+            context,
+            appointment: appointment,
+            entity: entity,
+            eventType: eventType,
+            strings: strings,
+          );
+        }
+        return false;
+      },
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        alignment: Alignment.centerLeft,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: LinearGradient(
+            colors: [
+              SyncroColors.clinicalEmerald.withValues(alpha: 0.85),
+              SyncroColors.electricIndigo.withValues(alpha: 0.65),
             ],
           ),
         ),
-        child: cardContent,
-      );
-    }
+        child: Row(
+          children: [
+            const Icon(Icons.verified_rounded, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(
+              strings.confirmAction,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+      secondaryBackground: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        alignment: Alignment.centerRight,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: LinearGradient(
+            colors: [
+              SyncroColors.amethystViolet.withValues(alpha: 0.70),
+              SyncroColors.electricIndigo.withValues(alpha: 0.85),
+            ],
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text(
+              strings.editAppointmentAction,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.edit_calendar_rounded, color: Colors.white),
+          ],
+        ),
+      ),
+      child: cardContent,
+    );
 
     return IntrinsicHeight(
       child: Row(
@@ -945,6 +1215,625 @@ class _StatusBadge extends StatelessWidget {
           fontWeight: FontWeight.w800,
           color: color,
         ),
+      ),
+    );
+  }
+}
+
+/// Glassmorphic 3-way view switcher (Timeline, Month Grid, Week Matrix)
+class _ViewModeSegmentedSelector extends StatelessWidget {
+  final AgendaViewMode currentMode;
+  final ValueChanged<AgendaViewMode> onModeChanged;
+  final AppStrings strings;
+
+  const _ViewModeSegmentedSelector({
+    required this.currentMode,
+    required this.onModeChanged,
+    required this.strings,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassContainer(
+      borderRadius: 22,
+      padding: const EdgeInsets.all(4),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ViewSegmentItem(
+              icon: Icons.view_timeline_rounded,
+              label: strings.viewTimeline,
+              isSelected: currentMode == AgendaViewMode.timeline,
+              onTap: () => onModeChanged(AgendaViewMode.timeline),
+            ),
+          ),
+          Expanded(
+            child: _ViewSegmentItem(
+              icon: Icons.calendar_view_month_rounded,
+              label: strings.viewMonth,
+              isSelected: currentMode == AgendaViewMode.month,
+              onTap: () => onModeChanged(AgendaViewMode.month),
+            ),
+          ),
+          Expanded(
+            child: _ViewSegmentItem(
+              icon: Icons.view_week_rounded,
+              label: strings.viewWeek,
+              isSelected: currentMode == AgendaViewMode.week,
+              onTap: () => onModeChanged(AgendaViewMode.week),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ViewSegmentItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ViewSegmentItem({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: isSelected
+              ? LinearGradient(
+                  colors: [
+                    primary,
+                    SyncroColors.amethystViolet,
+                  ],
+                )
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 15,
+              color: isSelected ? Colors.white : null,
+            ),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected ? Colors.white : null,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Interactive Glassmorphic Month Grid with Category Indicator Micro-Dots
+class _GlassMonthCalendarMatrix extends StatelessWidget {
+  final DateTime focusedMonth;
+  final DateTime? selectedDate;
+  final Map<DateTime, List<Color>> dotsByDate;
+  final AppStrings strings;
+  final ValueChanged<DateTime> onDateSelected;
+  final ValueChanged<DateTime> onMonthChanged;
+  final VoidCallback onTodayTap;
+
+  const _GlassMonthCalendarMatrix({
+    required this.focusedMonth,
+    required this.selectedDate,
+    required this.dotsByDate,
+    required this.strings,
+    required this.onDateSelected,
+    required this.onMonthChanged,
+    required this.onTodayTap,
+  });
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final now = DateTime.now();
+
+    final firstOfMonth = DateTime(focusedMonth.year, focusedMonth.month, 1);
+    final offsetDays = (firstOfMonth.weekday - 1) % 7;
+    final calendarStart = firstOfMonth.subtract(Duration(days: offsetDays));
+    final allDays =
+        List.generate(42, (i) => calendarStart.add(Duration(days: i)));
+
+    final weekdayLabels = [
+      DateTime.monday,
+      DateTime.tuesday,
+      DateTime.wednesday,
+      DateTime.thursday,
+      DateTime.friday,
+      DateTime.saturday,
+      DateTime.sunday,
+    ].map((w) => strings.weekdayName(w, short: true).toUpperCase()).toList();
+
+    return GlassContainer(
+      borderRadius: 24,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      child: Column(
+        children: [
+          // Month Header Bar
+          Row(
+            children: [
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.chevron_left_rounded, size: 22),
+                onPressed: () => onMonthChanged(
+                  DateTime(focusedMonth.year, focusedMonth.month - 1, 1),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '${strings.monthName(focusedMonth.month)} ${focusedMonth.year}',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.chevron_right_rounded, size: 22),
+                onPressed: () => onMonthChanged(
+                  DateTime(focusedMonth.year, focusedMonth.month + 1, 1),
+                ),
+              ),
+              const Spacer(),
+              AnimatedScaleTap(
+                onTap: onTodayTap,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4.5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: primary.withValues(alpha: 0.32),
+                    ),
+                  ),
+                  child: Text(
+                    strings.todayButton,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: primary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Weekday Labels Row
+          Row(
+            children: [
+              for (final label in weekdayLabels)
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        color: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.color
+                            ?.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // 6 x 7 Calendar Grid
+          Column(
+            children: [
+              for (int row = 0; row < 6; row++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      for (int col = 0; col < 7; col++) ...[
+                        Builder(
+                          builder: (context) {
+                            final cellDate = allDays[row * 7 + col];
+                            final isCurrentMonth =
+                                cellDate.month == focusedMonth.month;
+                            final isSelected = selectedDate != null &&
+                                _isSameDay(selectedDate!, cellDate);
+                            final isToday = _isSameDay(now, cellDate);
+
+                            final normKey = DateTime(
+                              cellDate.year,
+                              cellDate.month,
+                              cellDate.day,
+                            );
+                            final dots = dotsByDate[normKey] ?? const <Color>[];
+
+                            return Expanded(
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  onDateSelected(cellDate);
+                                },
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 180),
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 1.5,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4.5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(11),
+                                    gradient: isSelected
+                                        ? LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: [
+                                              primary,
+                                              SyncroColors.amethystViolet,
+                                            ],
+                                          )
+                                        : null,
+                                    border: isToday && !isSelected
+                                        ? Border.all(
+                                            color:
+                                                SyncroColors.clinicalEmerald,
+                                            width: 1.4,
+                                          )
+                                        : null,
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        '${cellDate.day}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: isSelected || isToday
+                                              ? FontWeight.w900
+                                              : FontWeight.w600,
+                                          color: isSelected
+                                              ? Colors.white
+                                              : (isCurrentMonth
+                                                  ? null
+                                                  : Theme.of(context)
+                                                      .textTheme
+                                                      .bodySmall
+                                                      ?.color
+                                                      ?.withValues(
+                                                        alpha: 0.28,
+                                                      )),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      SizedBox(
+                                        height: 4,
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            for (final dot in dots.take(3))
+                                              Container(
+                                                width: 3.5,
+                                                height: 3.5,
+                                                margin:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 0.8,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: isSelected
+                                                      ? Colors.white
+                                                      : dot,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Interactive Glassmorphic Week Matrix View (7 Responsive Columns with Event Breakdown)
+class _GlassWeekMatrix extends StatelessWidget {
+  final DateTime focusedDate;
+  final DateTime? selectedDate;
+  final Map<DateTime, List<Color>> dotsByDate;
+  final List<Appointment> appointments;
+  final AppStrings strings;
+  final ValueChanged<DateTime> onDateSelected;
+  final ValueChanged<DateTime> onWeekChanged;
+  final VoidCallback onCurrentWeekTap;
+
+  const _GlassWeekMatrix({
+    required this.focusedDate,
+    required this.selectedDate,
+    required this.dotsByDate,
+    required this.appointments,
+    required this.strings,
+    required this.onDateSelected,
+    required this.onWeekChanged,
+    required this.onCurrentWeekTap,
+  });
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  DateTime _startOfWeek(DateTime date) {
+    return DateTime(date.year, date.month, date.day)
+        .subtract(Duration(days: date.weekday - 1));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final now = DateTime.now();
+
+    final weekStart = _startOfWeek(focusedDate);
+    final weekEnd = weekStart.add(const Duration(days: 6));
+    final weekDays = List.generate(7, (i) => weekStart.add(Duration(days: i)));
+
+    final rangeText =
+        '${DateFormat("d MMM").format(weekStart)} – ${DateFormat("d MMM yyyy").format(weekEnd)}';
+
+    return GlassContainer(
+      borderRadius: 24,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      child: Column(
+        children: [
+          // Week Header Bar
+          Row(
+            children: [
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.chevron_left_rounded, size: 22),
+                onPressed: () => onWeekChanged(
+                  focusedDate.subtract(const Duration(days: 7)),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                rangeText,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.chevron_right_rounded, size: 22),
+                onPressed: () => onWeekChanged(
+                  focusedDate.add(const Duration(days: 7)),
+                ),
+              ),
+              const Spacer(),
+              AnimatedScaleTap(
+                onTap: onCurrentWeekTap,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4.5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: primary.withValues(alpha: 0.32),
+                    ),
+                  ),
+                  child: Text(
+                    strings.todayButton,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: primary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // 7 Interactive Day Cards Row
+          Row(
+            children: [
+              for (final day in weekDays)
+                Expanded(
+                  child: Builder(
+                    builder: (context) {
+                      final isSelected = selectedDate != null &&
+                          _isSameDay(selectedDate!, day);
+                      final isToday = _isSameDay(now, day);
+                      final normKey = DateTime(day.year, day.month, day.day);
+                      final dots = dotsByDate[normKey] ?? const <Color>[];
+
+                      final dayAptsCount = appointments
+                          .where((a) => _isSameDay(a.timeRange.start, day))
+                          .length;
+
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          onDateSelected(day);
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                            horizontal: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            gradient: isSelected
+                                ? LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      primary,
+                                      SyncroColors.amethystViolet,
+                                    ],
+                                  )
+                                : null,
+                            color: isSelected
+                                ? null
+                                : (Theme.of(context).brightness ==
+                                        Brightness.dark
+                                    ? SyncroColors.darkSurface
+                                        .withValues(alpha: 0.5)
+                                    : Colors.white.withValues(alpha: 0.6)),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Colors.white.withValues(alpha: 0.5)
+                                  : (isToday
+                                      ? SyncroColors.clinicalEmerald
+                                      : Colors.white.withValues(alpha: 0.08)),
+                              width: isToday && !isSelected ? 1.4 : 1.0,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                strings
+                                    .weekdayName(day.weekday, short: true)
+                                    .toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: isSelected
+                                      ? Colors.white.withValues(alpha: 0.85)
+                                      : Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.color
+                                          ?.withValues(alpha: 0.6),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${day.day}',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w900,
+                                  color: isSelected ? Colors.white : null,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              if (dayAptsCount > 0)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1.5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? Colors.white.withValues(alpha: 0.22)
+                                        : primary.withValues(alpha: 0.16),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '$dayAptsCount',
+                                    style: TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w900,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : primary,
+                                    ),
+                                  ),
+                                )
+                              else
+                                const SizedBox(height: 15),
+                              const SizedBox(height: 4),
+                              SizedBox(
+                                height: 3.5,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    for (final dot in dots.take(3))
+                                      Container(
+                                        width: 3.5,
+                                        height: 3.5,
+                                        margin: const EdgeInsets.symmetric(
+                                          horizontal: 0.6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: isSelected
+                                              ? Colors.white
+                                              : dot,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }

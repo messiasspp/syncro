@@ -163,6 +163,26 @@ class CalendarSyncService {
     return updatedAppointment;
   }
 
+  /// Deletes an [appointment]'s external calendar event from its dedicated sub-calendar.
+  Future<void> deleteAppointmentFromCalendar(Appointment appointment) async {
+    final externalEventId = appointment.externalCalendarEventId;
+    if (externalEventId == null) return;
+
+    final eventType =
+        await _repository.getEventTypeById(appointment.eventTypeId);
+    final calendarId = eventType?.calendarMappingId;
+    if (calendarId != null) {
+      try {
+        await _calendarClient.deleteEvent(
+          calendarId: calendarId,
+          externalEventId: externalEventId,
+        );
+      } catch (_) {
+        // Silently tolerate if external event was already removed externally
+      }
+    }
+  }
+
   /// Performs a full two-way synchronization pass across all [EventType]s and
   /// active appointments within [syncWindow].
   Future<CalendarSyncResult> syncAll({

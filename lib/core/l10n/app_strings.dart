@@ -56,6 +56,13 @@ class AppStrings {
 
   // Agenda Screen
   String get allFilter => isPt ? 'Todos' : 'All';
+  String get viewTimeline => isPt ? 'Linha do Tempo' : 'Timeline';
+  String get viewMonth => isPt ? 'Mês' : 'Month';
+  String get viewWeek => isPt ? 'Semana' : 'Week';
+  String get todayButton => isPt ? 'Hoje' : 'Today';
+  String get noAppointmentsForSelectedDay => isPt
+      ? 'Nenhum agendamento marcado para esta data.'
+      : 'No appointments scheduled for this date.';
   String get confirmedLabel => isPt ? 'Confirmado' : 'Confirmed';
   String get suggestedLabel => isPt ? 'Sugerido' : 'Suggested';
   String get completedLabel => isPt ? 'Concluído' : 'Completed';
@@ -66,7 +73,34 @@ class AppStrings {
       : 'No appointments found for this filter.';
   String get confirmAction => isPt ? 'Confirmar' : 'Confirm';
   String get shareAction => isPt ? 'Mensagem' : 'Share';
+  String get editAppointmentAction =>
+      isPt ? 'Editar e Remarcar' : 'Edit & Reschedule';
   String get syncedBadge => isPt ? 'Sincronizado' : 'Synced';
+  String get editAppointmentTitle =>
+      isPt ? 'Detalhes e Remarcação' : 'Appointment Details & Reschedule';
+  String get appointmentDateLabel =>
+      isPt ? 'Data do Agendamento' : 'Appointment Date';
+  String get appointmentTimeLabel => isPt ? 'Horário' : 'Time Window';
+  String get statusLabel =>
+      isPt ? 'Status do Agendamento' : 'Appointment Status';
+  String get saveChangesButton =>
+      isPt ? 'Salvar Alterações' : 'Save Changes';
+  String get rescheduleSuccess => isPt
+      ? 'Agendamento remarcado e sincronizado com sucesso!'
+      : 'Appointment rescheduled and synced successfully!';
+  String get deleteAppointmentButton =>
+      isPt ? 'Excluir Agendamento' : 'Delete Appointment';
+  String get confirmDeleteTitle =>
+      isPt ? 'Excluir Agendamento?' : 'Delete Appointment?';
+  String get confirmDeleteMessage => isPt
+      ? 'Tem certeza de que deseja excluir este agendamento? Ele será removido também do calendário do dispositivo.'
+      : 'Are you sure you want to delete this appointment? It will also be removed from your device calendar.';
+  String get deleteSuccess =>
+      isPt ? 'Agendamento excluído!' : 'Appointment deleted!';
+  String statusUpdated(String statusName) =>
+      isPt ? 'Status atualizado para $statusName' : 'Status updated to $statusName';
+  String get cancelAction => isPt ? 'Cancelar' : 'Cancel';
+  String get deleteAction => isPt ? 'Excluir' : 'Delete';
 
   // Windowed Lazy Loading (all lists)
   String loadMoreLabel(int remaining) => isPt
@@ -159,6 +193,47 @@ class AppStrings {
   String get allDatesLabel => isPt ? 'Todas as Datas' : 'All Dates';
 
   // Weekday Names
+  String get clearFilter => isPt ? 'Limpar Filtro' : 'Clear Filter';
+  String get viewAll => isPt ? 'Ver Todos' : 'View All';
+
+  String monthName(int month) {
+    if (isPt) {
+      const ptMonths = [
+        '',
+        'Janeiro',
+        'Fevereiro',
+        'Março',
+        'Abril',
+        'Maio',
+        'Junho',
+        'Julho',
+        'Agosto',
+        'Setembro',
+        'Outubro',
+        'Novembro',
+        'Dezembro',
+      ];
+      return (month >= 1 && month <= 12) ? ptMonths[month] : '';
+    } else {
+      const enMonths = [
+        '',
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+      return (month >= 1 && month <= 12) ? enMonths[month] : '';
+    }
+  }
+
   String weekdayName(int weekday, {bool short = false}) {
     if (isPt) {
       const fullPt = {
