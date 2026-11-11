@@ -110,7 +110,8 @@ class CalendarSyncService {
       throw StateError('Calendar permissions not granted.');
     }
 
-    final eventType = await _repository.getEventTypeById(appointment.eventTypeId);
+    final eventType =
+        await _repository.getEventTypeById(appointment.eventTypeId);
     if (eventType == null) {
       throw StateError('EventType not found: ${appointment.eventTypeId}');
     }
@@ -134,7 +135,8 @@ class CalendarSyncService {
       descriptionBuffer.writeln('Phone: ${entity!.phone}');
     }
     if (appointment.visitIndex != null) {
-      descriptionBuffer.writeln('Protocol Visit: #${appointment.visitIndex! + 1}');
+      descriptionBuffer
+          .writeln('Protocol Visit: #${appointment.visitIndex! + 1}');
     }
 
     final externalEvent = ExternalCalendarEvent(

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/theme/syncro_theme.dart';
 import '../../../../core/widgets/glass_container.dart';
+import '../../../../core/widgets/windowed_pager.dart';
 import '../../domain/models/appointment.dart';
 import '../../domain/models/entity.dart';
 import '../../domain/models/event_type.dart';
@@ -23,6 +24,32 @@ class AgendaScreen extends ConsumerStatefulWidget {
 class _AgendaScreenState extends ConsumerState<AgendaScreen> {
   String? _selectedEventTypeId;
   DateTime? _selectedDateFilter;
+
+  /// Windowed lazy loading over day groups: 7 days per page, at most 21
+  /// days mounted at once (older days are trimmed from the top).
+  final WindowedPager _pager = WindowedPager(pageSize: 7, maxWindow: 21);
+
+  @override
+  void initState() {
+    super.initState();
+    _pager.attach(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _pager.detach();
+    super.dispose();
+  }
+
+  /// Applies a filter change and restarts the window from the first page.
+  void _applyFilter(VoidCallback change) {
+    setState(() {
+      change();
+      _pager.reset();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,20 +72,29 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
             .where((a) => a.eventTypeId == _selectedEventTypeId)
             .toList();
 
-    // Distinct calendar dates for the interactive horizontal date ribbon
+    // Distinct calendar dates for the interactive horizontal date ribbon,
+    // with up to 3 category dot colors per date precomputed in one pass.
     final distinctDates = <DateTime>[];
-    final seenDateKeys = <String>{};
+    final dotSetsByDate = <DateTime, Set<Color>>{};
     for (final apt in filteredByType) {
       final d = DateTime(
         apt.timeRange.start.year,
         apt.timeRange.start.month,
         apt.timeRange.start.day,
       );
-      final key = '${d.year}-${d.month}-${d.day}';
-      if (seenDateKeys.add(key)) {
+      final dots = dotSetsByDate.putIfAbsent(d, () {
         distinctDates.add(d);
+        return <Color>{};
+      });
+      if (dots.length < 3) {
+        dots.add(
+          parseHexColor(eventTypeById[apt.eventTypeId]?.colorHex ?? '#6366F1'),
+        );
       }
     }
+    final dotsByDate = {
+      for (final e in dotSetsByDate.entries) e.key: e.value.toList(),
+    };
 
     final filtered = _selectedDateFilter == null
         ? filteredByType
@@ -87,6 +123,14 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
       grouped.putIfAbsent(dayKey, () => []).add(apt);
     }
     final sortedDays = grouped.keys.toList()..sort();
+
+    // Windowed slice of day groups currently mounted.
+    final totalDays = sortedDays.length;
+    final windowStart = _pager.visibleStart(totalDays);
+    final windowEnd = _pager.visibleEnd(totalDays);
+    final windowCount = windowEnd - windowStart;
+    final hasEarlier = _pager.hasEarlier && windowStart > 0;
+    final leading = hasEarlier ? 1 : 0;
 
     final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight + 12;
 
@@ -151,7 +195,7 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                         label: strings.allFilter,
                         isSelected: _selectedEventTypeId == null,
                         dotColor: SyncroColors.electricIndigo,
-                        onTap: () => setState(() {
+                        onTap: () => _applyFilter(() {
                           _selectedEventTypeId = null;
                           _selectedDateFilter = null;
                         }),
@@ -162,7 +206,7 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                           label: et.name,
                           isSelected: _selectedEventTypeId == et.id,
                           dotColor: parseHexColor(et.colorHex),
-                          onTap: () => setState(() {
+                          onTap: () => _applyFilter(() {
                             _selectedEventTypeId =
                                 _selectedEventTypeId == et.id ? null : et.id;
                             _selectedDateFilter = null;
@@ -196,7 +240,7 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                               SyncroColors.clinicalEmerald,
                             ],
                             onTap: () =>
-                                setState(() => _selectedDateFilter = null),
+                                _applyFilter(() => _selectedDateFilter = null),
                           );
                         }
                         final date = distinctDates[idx - 1];
@@ -204,22 +248,7 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                             _selectedDateFilter!.year == date.year &&
                             _selectedDateFilter!.month == date.month &&
                             _selectedDateFilter!.day == date.day;
-                        final dayApts = filteredByType.where((a) {
-                          final s = a.timeRange.start;
-                          return s.year == date.year &&
-                              s.month == date.month &&
-                              s.day == date.day;
-                        }).toList();
-                        final dots = dayApts
-                            .map(
-                              (a) => parseHexColor(
-                                eventTypeById[a.eventTypeId]?.colorHex ??
-                                    '#6366F1',
-                              ),
-                            )
-                            .toSet()
-                            .take(3)
-                            .toList();
+                        final dots = dotsByDate[date] ?? const <Color>[];
 
                         return _DateRibbonChip(
                           topText: strings
@@ -229,7 +258,7 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                           bottomText: DateFormat('MMM').format(date),
                           isSelected: isSelected,
                           dotColors: dots,
-                          onTap: () => setState(() {
+                          onTap: () => _applyFilter(() {
                             _selectedDateFilter = isSelected ? null : date;
                           }),
                         );
@@ -262,77 +291,111 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final day = sortedDays[index];
+                  // [Show earlier] • windowed day groups • [Load more footer]
+                  if (hasEarlier && index == 0) {
+                    return PagerShowEarlierButton(
+                      label: strings.showEarlierLabel(windowStart),
+                      onTap: (ctx) => _pager.loadEarlier(ctx, setState),
+                    );
+                  }
+                  final local = index - leading;
+                  if (local == windowCount) {
+                    return PagerFooter(
+                      hasMore: _pager.hasMore(totalDays),
+                      loadMoreLabel:
+                          strings.loadMoreLabel(_pager.remaining(totalDays)),
+                      rangeLabel: strings.windowRangeLabel(
+                        windowStart + 1,
+                        windowEnd,
+                        totalDays,
+                      ),
+                      endLabel: strings.endOfListLabel,
+                      onLoadMore: (ctx) =>
+                          _pager.loadMore(ctx, totalDays, setState),
+                    );
+                  }
+                  final globalIndex = windowStart + local;
+                  final day = sortedDays[globalIndex];
                   final dayAppointments = grouped[day]!;
-                  return StaggeredReveal(
-                    index: index,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 18),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Theme.of(context).colorScheme.primary,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primary
-                                          .withValues(alpha: 0.5),
-                                      blurRadius: 8,
-                                    ),
-                                  ],
+                  return _pager.measure(
+                    globalIndex,
+                    StaggeredReveal(
+                      index: globalIndex % _pager.pageSize,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 18),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary
+                                            .withValues(alpha: 0.5),
+                                        blurRadius: 8,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                strings.formatDateHeader(day),
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.2,
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
-                                    ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          for (int i = 0; i < dayAppointments.length; i++)
-                            _TimelineAppointmentRow(
-                              appointment: dayAppointments[i],
-                              entity: entityById[dayAppointments[i].entityId],
-                              eventType:
-                                  eventTypeById[dayAppointments[i].eventTypeId],
-                              strings: strings,
-                              isLastInDay: i == dayAppointments.length - 1,
-                              onConfirm: () async {
-                                HapticFeedback.mediumImpact();
-                                final confirmed = dayAppointments[i].copyWith(
-                                  status: AppointmentStatus.confirmed,
-                                );
-                                await ref
-                                    .read(schedulingRepositoryProvider)
-                                    .upsertAppointment(confirmed);
-                                await ref
-                                    .read(calendarSyncServiceProvider)
-                                    .pushAppointmentToCalendar(confirmed);
-                              },
+                                const SizedBox(width: 8),
+                                Text(
+                                  strings.formatDateHeader(day),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.2,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                      ),
+                                ),
+                              ],
                             ),
-                        ],
+                            const SizedBox(height: 8),
+                            for (int i = 0; i < dayAppointments.length; i++)
+                              _TimelineAppointmentRow(
+                                appointment: dayAppointments[i],
+                                entity: entityById[dayAppointments[i].entityId],
+                                eventType: eventTypeById[
+                                    dayAppointments[i].eventTypeId],
+                                strings: strings,
+                                isLastInDay: i == dayAppointments.length - 1,
+                                onConfirm: () async {
+                                  HapticFeedback.mediumImpact();
+                                  final confirmed = dayAppointments[i].copyWith(
+                                    status: AppointmentStatus.confirmed,
+                                  );
+                                  await ref
+                                      .read(schedulingRepositoryProvider)
+                                      .upsertAppointment(confirmed);
+                                  await ref
+                                      .read(calendarSyncServiceProvider)
+                                      .pushAppointmentToCalendar(confirmed);
+                                },
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   );
                 },
-                childCount: sortedDays.length,
+                childCount: leading + windowCount + 1,
+                findChildIndexCallback: (key) => _pager.findChildIndex(
+                  key,
+                  leading: leading,
+                  total: totalDays,
+                ),
               ),
             ),
           ),
@@ -385,10 +448,10 @@ class _BentoStatCard extends StatelessWidget {
                   return Text(
                     '${val.round()}',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          color: accentColor,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
+                      fontWeight: FontWeight.w900,
+                      color: accentColor,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   );
                 },
               ),
@@ -699,7 +762,7 @@ class _TimelineAppointmentRow extends StatelessWidget {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.cloud_done_rounded,
                             size: 13,
                             color: SyncroColors.clinicalEmerald,
@@ -718,7 +781,7 @@ class _TimelineAppointmentRow extends StatelessWidget {
                     if (isSuggested)
                       Text(
                         strings.swipeToConfirmHint,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 10.5,
                           fontStyle: FontStyle.italic,
                           color: SyncroColors.amberSuggested,
@@ -807,10 +870,10 @@ class _TimelineAppointmentRow extends StatelessWidget {
                 Text(
                   strings.formatTime(appointment.timeRange.start),
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 11,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Expanded(

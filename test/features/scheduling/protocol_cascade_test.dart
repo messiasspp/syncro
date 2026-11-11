@@ -7,7 +7,7 @@ import 'package:syncro/features/scheduling/domain/models/work_schedule.dart';
 import 'package:syncro/features/scheduling/domain/services/protocol_cascade_service.dart';
 
 void main() {
-  final standardWorkSchedule = WorkSchedule(
+  const standardWorkSchedule = WorkSchedule(
     workDays: {
       DateTime.monday,
       DateTime.tuesday,
@@ -19,15 +19,15 @@ void main() {
     endHour: 18,
   );
 
-  final mounjaroType = EventType(
+  const mounjaroType = EventType(
     id: 'type_mounjaro',
     name: 'Mounjaro Clinical Study',
     workHoursConstraint: WorkHoursConstraint.workHoursOnly,
-    minDuration: const Duration(minutes: 45),
-    maxDuration: const Duration(minutes: 45),
-    bufferBefore: const Duration(minutes: 15),
-    bufferAfter: const Duration(minutes: 15),
-    allowedTimeWindows: const [
+    minDuration: Duration(minutes: 45),
+    maxDuration: Duration(minutes: 45),
+    bufferBefore: Duration(minutes: 15),
+    bufferAfter: Duration(minutes: 15),
+    allowedTimeWindows: [
       DayTimeWindow(
         dayOfWeek: DateTime.monday,
         startHour: 8,
@@ -41,7 +41,7 @@ void main() {
     ],
   );
 
-  final patient101 = Entity(
+  const patient101 = Entity(
     id: 'patient_101',
     name: 'Patient 101',
     defaultEventTypeId: 'type_mounjaro',

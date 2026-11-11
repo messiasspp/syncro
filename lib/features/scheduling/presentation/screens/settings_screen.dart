@@ -231,8 +231,7 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                         onPressed: () async {
                           HapticFeedback.selectionClick();
-                          final nextStart =
-                              workSchedule.startHour == 8 ? 9 : 8;
+                          final nextStart = workSchedule.startHour == 8 ? 9 : 8;
                           await ref
                               .read(schedulingRepositoryProvider)
                               .saveWorkSchedule(
@@ -368,9 +367,8 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     onPressed: () async {
                       HapticFeedback.mediumImpact();
-                      final result = await ref
-                          .read(calendarSyncServiceProvider)
-                          .syncAll();
+                      final result =
+                          await ref.read(calendarSyncServiceProvider).syncAll();
                       ref.invalidate(externalCalendarsFutureProvider);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -446,9 +444,8 @@ class _ThemeOptionCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(14),
-          color: isSelected
-              ? primary.withValues(alpha: 0.20)
-              : Colors.transparent,
+          color:
+              isSelected ? primary.withValues(alpha: 0.20) : Colors.transparent,
           border: Border.all(
             color: isSelected
                 ? primary

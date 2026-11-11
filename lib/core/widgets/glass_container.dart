@@ -434,9 +434,8 @@ class FloatingGlassNavBar extends StatelessWidget {
                 child: AnimatedScale(
                   scale: showScrollToTop ? 1.0 : 0.4,
                   duration: const Duration(milliseconds: 280),
-                  curve: showScrollToTop
-                      ? Curves.easeOutBack
-                      : Curves.easeInCubic,
+                  curve:
+                      showScrollToTop ? Curves.easeOutBack : Curves.easeInCubic,
                   child: AnimatedOpacity(
                     opacity: showScrollToTop ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 220),
@@ -621,9 +620,8 @@ class _GlassNavButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = Theme.of(context).colorScheme.primary;
-    final unselectedColor = isDark
-        ? Colors.white.withValues(alpha: 0.60)
-        : const Color(0xFF475569);
+    final unselectedColor =
+        isDark ? Colors.white.withValues(alpha: 0.60) : const Color(0xFF475569);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

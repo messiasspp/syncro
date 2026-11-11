@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/l10n/app_strings.dart';
 import 'core/theme/syncro_theme.dart';
 import 'core/widgets/glass_container.dart';
+import 'core/widgets/windowed_pager.dart';
 import 'features/scheduling/domain/models/event_type.dart';
 import 'features/scheduling/presentation/providers/scheduling_providers.dart';
 import 'features/scheduling/presentation/screens/agenda_screen.dart';
@@ -72,13 +73,21 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen> {
 
   void _scrollToTop() {
     HapticFeedback.mediumImpact();
+    // Bring every windowed list back to its true first page.
+    final wasShifted = WindowedPager.resetAllLive();
     final pos = _activeVerticalScrollPosition;
     if (pos != null && pos.hasPixels) {
-      pos.animateTo(
-        0.0,
-        duration: const Duration(milliseconds: 460),
-        curve: Curves.easeOutCubic,
-      );
+      if (wasShifted) {
+        // The top items were trimmed from the window, so animating through
+        // the remounted content makes no sense: jump straight to the top.
+        pos.jumpTo(0.0);
+      } else {
+        pos.animateTo(
+          0.0,
+          duration: const Duration(milliseconds: 460),
+          curve: Curves.easeOutCubic,
+        );
+      }
     }
     ref.read(isActionDockedProvider.notifier).state = false;
   }
@@ -100,8 +109,11 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen> {
       strings.tabSettings,
     ];
 
-    final (String? actionLabel, IconData actionIcon, VoidCallback? onActionTap) =
-        switch (selectedIndex) {
+    final (
+      String? actionLabel,
+      IconData actionIcon,
+      VoidCallback? onActionTap
+    ) = switch (selectedIndex) {
       0 => (
           strings.quickScheduleButton,
           Icons.add_rounded,

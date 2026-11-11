@@ -55,7 +55,9 @@ class ProtocolCascadeService {
           entityId: entity.id,
           eventTypeId: eventType.id,
           timeRange: chosenSlot,
-          status: i == 0 ? AppointmentStatus.confirmed : AppointmentStatus.suggested,
+          status: i == 0
+              ? AppointmentStatus.confirmed
+              : AppointmentStatus.suggested,
           visitIndex: i,
           protocolEnrollmentId: enrollment.id,
         );
@@ -115,7 +117,8 @@ class ProtocolCascadeService {
 
     for (int j = shiftedVisitIndex + 1; j < enrollment.totalVisits; j++) {
       // The new nominal date for visit j is anchored from the preceding visit's actual date
-      final nominalDate = anchorDate.add(Duration(days: enrollment.cadenceDays));
+      final nominalDate =
+          anchorDate.add(Duration(days: enrollment.cadenceDays));
       final searchWindow = TimeRange(
         start: DateTime(
           nominalDate.year,

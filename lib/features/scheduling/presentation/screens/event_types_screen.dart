@@ -4,255 +4,318 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/theme/syncro_theme.dart';
 import '../../../../core/widgets/glass_container.dart';
+import '../../../../core/widgets/windowed_pager.dart';
 import '../../domain/models/event_type.dart';
 import '../providers/scheduling_providers.dart';
 import '../widgets/confirmation_sheet.dart';
 
 /// Tab 2: Glassmorphic Event Types & Rule Engine Management Screen.
-class EventTypesScreen extends ConsumerWidget {
+class EventTypesScreen extends ConsumerStatefulWidget {
   const EventTypesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final strings = ref.watch(appStringsProvider);
-    final eventTypesAsync = ref.watch(eventTypesStreamProvider);
-    final eventTypes = eventTypesAsync.valueOrNull ?? const <EventType>[];
-    final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight + 14;
-
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 155),
-      children: [
-        Text(
-          strings.eventTypesHeader,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.2,
-              ),
-        ),
-        const SizedBox(height: 14),
-        for (int i = 0; i < eventTypes.length; i++)
-          StaggeredReveal(
-            index: i,
-            child: _EventTypeGlassCard(
-              eventType: eventTypes[i],
-              strings: strings,
-            ),
-          ),
-      ],
-    );
-  }
+  ConsumerState<EventTypesScreen> createState() => _EventTypesScreenState();
 
   static Future<void> showCreateEventTypeDialog(
     BuildContext context,
     WidgetRef ref,
     AppStrings strings,
-  ) async {
-    final nameCtrl = TextEditingController();
-    final minDurCtrl = TextEditingController(text: '45');
-    final maxDurCtrl = TextEditingController(text: '60');
-    final bufBeforeCtrl = TextEditingController(text: '10');
-    final bufAfterCtrl = TextEditingController(text: '10');
-    var selectedConstraint = WorkHoursConstraint.outsideWorkHours;
-    var selectedMode = SchedulingMode.suggestTopRanked;
-    var selectedHex = '#6366F1';
+  ) =>
+      _showCreateEventTypeDialog(context, ref, strings);
+}
 
-    const colorOptions = [
-      '#6366F1',
-      '#14B8A6',
-      '#EC4899',
-      '#F59E0B',
-      '#3B82F6',
-    ];
+class _EventTypesScreenState extends ConsumerState<EventTypesScreen> {
+  /// 10 cards per page, at most 30 mounted at once.
+  final WindowedPager _pager = WindowedPager(pageSize: 10, maxWindow: 30);
 
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setModalState) {
-            return AlertDialog(
-              title: Text(strings.newEventTypeButton),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: nameCtrl,
-                      decoration: InputDecoration(
-                        labelText: strings.isPt
-                            ? 'Nome da Categoria'
-                            : 'Category Name',
-                        hintText: 'e.g. Tennis Club / Cardiology Study',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<WorkHoursConstraint>(
-                      isExpanded: true,
-                      initialValue: selectedConstraint,
-                      decoration: InputDecoration(
-                        labelText: strings.isPt
-                            ? 'Regra de Expediente'
-                            : 'Work Boundary Rule',
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: WorkHoursConstraint.workHoursOnly,
-                          child: Text(strings.workHoursOnlyLabel),
-                        ),
-                        DropdownMenuItem(
-                          value: WorkHoursConstraint.outsideWorkHours,
-                          child: Text(strings.outsideWorkHoursLabel),
-                        ),
-                        DropdownMenuItem(
-                          value: WorkHoursConstraint.bothFlexible,
-                          child: Text(strings.bothFlexibleLabel),
-                        ),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) {
-                          setModalState(() => selectedConstraint = v);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<SchedulingMode>(
-                      isExpanded: true,
-                      initialValue: selectedMode,
-                      decoration: InputDecoration(
-                        labelText: strings.isPt
-                            ? 'Modo de Alocação'
-                            : 'Scheduling Mode',
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: SchedulingMode.instantAuto,
-                          child: Text(strings.instantAutoLabel),
-                        ),
-                        DropdownMenuItem(
-                          value: SchedulingMode.suggestTopRanked,
-                          child: Text(strings.suggestTopRankedLabel),
-                        ),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) {
-                          setModalState(() => selectedMode = v);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: minDurCtrl,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Min (min)',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: maxDurCtrl,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Max (min)',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: bufBeforeCtrl,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Pre-Buffer (m)',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: bufAfterCtrl,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Post-Buffer (m)',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 10,
-                      children: [
-                        for (final hex in colorOptions)
-                          GestureDetector(
-                            onTap: () =>
-                                setModalState(() => selectedHex = hex),
-                            child: CircleAvatar(
-                              radius: 16,
-                              backgroundColor: parseHexColor(hex),
-                              child: selectedHex == hex
-                                  ? const Icon(
-                                      Icons.check,
-                                      size: 16,
-                                      color: Colors.white,
-                                    )
-                                  : null,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: Text(strings.isPt ? 'Cancelar' : 'Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () async {
-                    final name = nameCtrl.text.trim();
-                    if (name.isEmpty) return;
-                    final minMin = int.tryParse(minDurCtrl.text) ?? 45;
-                    final maxMin = int.tryParse(maxDurCtrl.text) ?? minMin;
-                    final preMin = int.tryParse(bufBeforeCtrl.text) ?? 0;
-                    final postMin = int.tryParse(bufAfterCtrl.text) ?? 0;
+  @override
+  void initState() {
+    super.initState();
+    _pager.attach(() {
+      if (mounted) setState(() {});
+    });
+  }
 
-                    final newEt = EventType(
-                      id: 'et_${DateTime.now().millisecondsSinceEpoch}',
-                      name: name,
-                      colorHex: selectedHex,
-                      workHoursConstraint: selectedConstraint,
-                      minDuration: Duration(minutes: minMin),
-                      maxDuration: Duration(
-                        minutes: maxMin < minMin ? minMin : maxMin,
-                      ),
-                      bufferBefore: Duration(minutes: preMin),
-                      bufferAfter: Duration(minutes: postMin),
-                      schedulingMode: selectedMode,
-                    );
-                    await ref
-                        .read(schedulingRepositoryProvider)
-                        .upsertEventType(newEt);
-                    if (ctx.mounted) Navigator.of(ctx).pop();
-                  },
-                  child: Text(strings.isPt ? 'Salvar' : 'Save'),
-                ),
-              ],
-            );
-          },
+  @override
+  void dispose() {
+    _pager.detach();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = ref.watch(appStringsProvider);
+    final eventTypesAsync = ref.watch(eventTypesStreamProvider);
+    final eventTypes = eventTypesAsync.valueOrNull ?? const <EventType>[];
+    final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight + 14;
+
+    final total = eventTypes.length;
+    final windowStart = _pager.visibleStart(total);
+    final windowEnd = _pager.visibleEnd(total);
+    final windowCount = windowEnd - windowStart;
+    final hasEarlier = _pager.hasEarlier && windowStart > 0;
+    // Slot 0 = section header, slot 1 = optional "Show earlier".
+    final leading = 1 + (hasEarlier ? 1 : 0);
+
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 155),
+      itemCount: leading + windowCount + 1,
+      findChildIndexCallback: (key) =>
+          _pager.findChildIndex(key, leading: leading, total: total),
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Text(
+              strings.eventTypesHeader,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
+            ),
+          );
+        }
+        if (hasEarlier && index == 1) {
+          return PagerShowEarlierButton(
+            label: strings.showEarlierLabel(windowStart),
+            onTap: (ctx) => _pager.loadEarlier(ctx, setState),
+          );
+        }
+        final local = index - leading;
+        if (local == windowCount) {
+          if (total == 0) return const SizedBox.shrink();
+          return PagerFooter(
+            hasMore: _pager.hasMore(total),
+            loadMoreLabel: strings.loadMoreLabel(_pager.remaining(total)),
+            rangeLabel:
+                strings.windowRangeLabel(windowStart + 1, windowEnd, total),
+            endLabel: strings.endOfListLabel,
+            onLoadMore: (ctx) => _pager.loadMore(ctx, total, setState),
+          );
+        }
+        final globalIndex = windowStart + local;
+        return _pager.measure(
+          globalIndex,
+          StaggeredReveal(
+            index: globalIndex % _pager.pageSize,
+            child: _EventTypeGlassCard(
+              eventType: eventTypes[globalIndex],
+              strings: strings,
+            ),
+          ),
         );
       },
     );
   }
+}
+
+Future<void> _showCreateEventTypeDialog(
+  BuildContext context,
+  WidgetRef ref,
+  AppStrings strings,
+) async {
+  final nameCtrl = TextEditingController();
+  final minDurCtrl = TextEditingController(text: '45');
+  final maxDurCtrl = TextEditingController(text: '60');
+  final bufBeforeCtrl = TextEditingController(text: '10');
+  final bufAfterCtrl = TextEditingController(text: '10');
+  var selectedConstraint = WorkHoursConstraint.outsideWorkHours;
+  var selectedMode = SchedulingMode.suggestTopRanked;
+  var selectedHex = '#6366F1';
+
+  const colorOptions = [
+    '#6366F1',
+    '#14B8A6',
+    '#EC4899',
+    '#F59E0B',
+    '#3B82F6',
+  ];
+
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return AlertDialog(
+            title: Text(strings.newEventTypeButton),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: InputDecoration(
+                      labelText:
+                          strings.isPt ? 'Nome da Categoria' : 'Category Name',
+                      hintText: 'e.g. Tennis Club / Cardiology Study',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<WorkHoursConstraint>(
+                    isExpanded: true,
+                    initialValue: selectedConstraint,
+                    decoration: InputDecoration(
+                      labelText: strings.isPt
+                          ? 'Regra de Expediente'
+                          : 'Work Boundary Rule',
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: WorkHoursConstraint.workHoursOnly,
+                        child: Text(strings.workHoursOnlyLabel),
+                      ),
+                      DropdownMenuItem(
+                        value: WorkHoursConstraint.outsideWorkHours,
+                        child: Text(strings.outsideWorkHoursLabel),
+                      ),
+                      DropdownMenuItem(
+                        value: WorkHoursConstraint.bothFlexible,
+                        child: Text(strings.bothFlexibleLabel),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) {
+                        setModalState(() => selectedConstraint = v);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<SchedulingMode>(
+                    isExpanded: true,
+                    initialValue: selectedMode,
+                    decoration: InputDecoration(
+                      labelText:
+                          strings.isPt ? 'Modo de Alocação' : 'Scheduling Mode',
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: SchedulingMode.instantAuto,
+                        child: Text(strings.instantAutoLabel),
+                      ),
+                      DropdownMenuItem(
+                        value: SchedulingMode.suggestTopRanked,
+                        child: Text(strings.suggestTopRankedLabel),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) {
+                        setModalState(() => selectedMode = v);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: minDurCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Min (min)',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: maxDurCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Max (min)',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: bufBeforeCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Pre-Buffer (m)',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: bufAfterCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Post-Buffer (m)',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 10,
+                    children: [
+                      for (final hex in colorOptions)
+                        GestureDetector(
+                          onTap: () => setModalState(() => selectedHex = hex),
+                          child: CircleAvatar(
+                            radius: 16,
+                            backgroundColor: parseHexColor(hex),
+                            child: selectedHex == hex
+                                ? const Icon(
+                                    Icons.check,
+                                    size: 16,
+                                    color: Colors.white,
+                                  )
+                                : null,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text(strings.isPt ? 'Cancelar' : 'Cancel'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  final name = nameCtrl.text.trim();
+                  if (name.isEmpty) return;
+                  final minMin = int.tryParse(minDurCtrl.text) ?? 45;
+                  final maxMin = int.tryParse(maxDurCtrl.text) ?? minMin;
+                  final preMin = int.tryParse(bufBeforeCtrl.text) ?? 0;
+                  final postMin = int.tryParse(bufAfterCtrl.text) ?? 0;
+
+                  final newEt = EventType(
+                    id: 'et_${DateTime.now().millisecondsSinceEpoch}',
+                    name: name,
+                    colorHex: selectedHex,
+                    workHoursConstraint: selectedConstraint,
+                    minDuration: Duration(minutes: minMin),
+                    maxDuration: Duration(
+                      minutes: maxMin < minMin ? minMin : maxMin,
+                    ),
+                    bufferBefore: Duration(minutes: preMin),
+                    bufferAfter: Duration(minutes: postMin),
+                    schedulingMode: selectedMode,
+                  );
+                  await ref
+                      .read(schedulingRepositoryProvider)
+                      .upsertEventType(newEt);
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                },
+                child: Text(strings.isPt ? 'Salvar' : 'Save'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
 }
 
 class _EventTypeGlassCard extends ConsumerWidget {

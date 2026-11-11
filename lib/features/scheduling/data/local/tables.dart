@@ -57,8 +57,9 @@ class WorkSchedulesTable extends Table {
   String get tableName => 'work_schedules';
 
   TextColumn get id => text().withDefault(const Constant('default'))();
-  TextColumn get workDaysJson =>
-      text().map(const WorkDaysSetConverter()).withDefault(const Constant('[1,2,3,4,5]'))();
+  TextColumn get workDaysJson => text()
+      .map(const WorkDaysSetConverter())
+      .withDefault(const Constant('[1,2,3,4,5]'))();
   IntColumn get startHour => integer().withDefault(const Constant(8))();
   IntColumn get startMinute => integer().withDefault(const Constant(0))();
   IntColumn get endHour => integer().withDefault(const Constant(18))();
@@ -81,12 +82,15 @@ class EventTypesTable extends Table {
       text().withDefault(const Constant('bothFlexible'))();
   IntColumn get minDurationMinutes => integer()();
   IntColumn get maxDurationMinutes => integer()();
-  IntColumn get bufferBeforeMinutes => integer().withDefault(const Constant(0))();
-  IntColumn get bufferAfterMinutes => integer().withDefault(const Constant(0))();
+  IntColumn get bufferBeforeMinutes =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get bufferAfterMinutes =>
+      integer().withDefault(const Constant(0))();
   TextColumn get schedulingMode =>
       text().withDefault(const Constant('suggestTopRanked'))();
-  TextColumn get allowedTimeWindowsJson =>
-      text().map(const DayTimeWindowListConverter()).withDefault(const Constant('[]'))();
+  TextColumn get allowedTimeWindowsJson => text()
+      .map(const DayTimeWindowListConverter())
+      .withDefault(const Constant('[]'))();
   TextColumn get calendarMappingId => text().nullable()();
 
   @override
@@ -104,8 +108,9 @@ class EntitiesTable extends Table {
   TextColumn get email => text().nullable()();
   TextColumn get defaultEventTypeId =>
       text().nullable().references(EventTypesTable, #id)();
-  TextColumn get customAvailabilityOverridesJson =>
-      text().map(const DayTimeWindowListConverter()).withDefault(const Constant('[]'))();
+  TextColumn get customAvailabilityOverridesJson => text()
+      .map(const DayTimeWindowListConverter())
+      .withDefault(const Constant('[]'))();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -124,7 +129,8 @@ class ProtocolEnrollmentsTable extends Table {
   IntColumn get startDateEpochMs => integer()();
   IntColumn get totalVisits => integer().withDefault(const Constant(24))();
   IntColumn get cadenceDays => integer().withDefault(const Constant(14))();
-  IntColumn get toleranceWindowDays => integer().withDefault(const Constant(3))();
+  IntColumn get toleranceWindowDays =>
+      integer().withDefault(const Constant(3))();
 
   @override
   Set<Column<Object>> get primaryKey => {id};

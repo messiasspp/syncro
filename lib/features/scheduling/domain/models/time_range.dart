@@ -25,7 +25,8 @@ class TimeRange implements Comparable<TimeRange> {
 
   /// Checks if this interval completely subsumes [other].
   bool containsRange(TimeRange other) {
-    return (other.start.isAtSameMomentAs(start) || other.start.isAfter(start)) &&
+    return (other.start.isAtSameMomentAs(start) ||
+            other.start.isAfter(start)) &&
         (other.end.isAtSameMomentAs(end) || other.end.isBefore(end));
   }
 
@@ -44,7 +45,8 @@ class TimeRange implements Comparable<TimeRange> {
     final latestStart = start.isAfter(other.start) ? start : other.start;
     final earliestEnd = end.isBefore(other.end) ? end : other.end;
 
-    if (earliestEnd.isBefore(latestStart) || earliestEnd.isAtSameMomentAs(latestStart)) {
+    if (earliestEnd.isBefore(latestStart) ||
+        earliestEnd.isAtSameMomentAs(latestStart)) {
       return null;
     }
 
@@ -53,7 +55,8 @@ class TimeRange implements Comparable<TimeRange> {
 
   /// Expands this interval on both sides by the specified buffer durations.
   /// Used in calendar scheduling to enforce pre-meeting preparation and post-meeting travel/wrap-up buffers.
-  TimeRange expand({Duration before = Duration.zero, Duration after = Duration.zero}) {
+  TimeRange expand(
+      {Duration before = Duration.zero, Duration after = Duration.zero}) {
     return TimeRange(
       start: start.subtract(before),
       end: end.add(after),
@@ -79,7 +82,8 @@ class TimeRange implements Comparable<TimeRange> {
   int get hashCode => start.hashCode ^ end.hashCode;
 
   @override
-  String toString() => 'TimeRange($start -> $end, duration: ${duration.inMinutes}m)';
+  String toString() =>
+      'TimeRange($start -> $end, duration: ${duration.inMinutes}m)';
 }
 
 void require(bool condition, String message) {

@@ -78,7 +78,7 @@ Future<void> main() async {
   // --- SCENARIO 1: FRIENDS ZONE ---
   stdout.writeln('\n📦 [Suite 2: Scenario 1 - Friends Zone (Personal / Off-Hours)]');
 
-  final standardWorkSchedule = WorkSchedule(
+  const standardWorkSchedule = WorkSchedule(
     workDays: {
       DateTime.monday,
       DateTime.tuesday,
@@ -90,19 +90,19 @@ Future<void> main() async {
     endHour: 18,
   );
 
-  final friendsZoneType = EventType(
+  const friendsZoneType = EventType(
     id: 'type_friends',
     name: 'Friends Zone',
     workHoursConstraint: WorkHoursConstraint.outsideWorkHours,
-    minDuration: const Duration(hours: 2),
-    maxDuration: const Duration(hours: 3),
-    allowedTimeWindows: const [
+    minDuration: Duration(hours: 2),
+    maxDuration: Duration(hours: 3),
+    allowedTimeWindows: [
       DayTimeWindow(dayOfWeek: DateTime.thursday, startHour: 19, endHour: 22),
       DayTimeWindow(dayOfWeek: DateTime.saturday, startHour: 12, endHour: 18),
     ],
   );
 
-  final mendy = Entity(
+  const mendy = Entity(
     id: 'entity_mendy',
     name: 'Mendy',
     defaultEventTypeId: 'type_friends',
@@ -140,21 +140,21 @@ Future<void> main() async {
   // --- SCENARIO 2: MOUNJARO CLINICAL STUDY ---
   stdout.writeln('\n📦 [Suite 3: Scenario 2 - Mounjaro Clinical Protocol]');
 
-  final mounjaroType = EventType(
+  const mounjaroType = EventType(
     id: 'type_mounjaro',
     name: 'Mounjaro Clinical Study',
     workHoursConstraint: WorkHoursConstraint.workHoursOnly,
-    minDuration: const Duration(minutes: 45),
-    maxDuration: const Duration(minutes: 45),
-    bufferBefore: const Duration(minutes: 15),
-    bufferAfter: const Duration(minutes: 15),
-    allowedTimeWindows: const [
+    minDuration: Duration(minutes: 45),
+    maxDuration: Duration(minutes: 45),
+    bufferBefore: Duration(minutes: 15),
+    bufferAfter: Duration(minutes: 15),
+    allowedTimeWindows: [
       DayTimeWindow(dayOfWeek: DateTime.monday, startHour: 8, endHour: 12),
       DayTimeWindow(dayOfWeek: DateTime.wednesday, startHour: 8, endHour: 12),
     ],
   );
 
-  final patient101 = Entity(
+  const patient101 = Entity(
     id: 'patient_101',
     name: 'Patient 101',
     defaultEventTypeId: 'type_mounjaro',

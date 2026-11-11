@@ -24,8 +24,10 @@ class IntervalMath {
       final next = sorted[i];
 
       // Overlapping or abutting: next.start <= current.end
-      if (next.start.isBefore(current.end) || next.start.isAtSameMomentAs(current.end)) {
-        final latestEnd = next.end.isAfter(current.end) ? next.end : current.end;
+      if (next.start.isBefore(current.end) ||
+          next.start.isAtSameMomentAs(current.end)) {
+        final latestEnd =
+            next.end.isAfter(current.end) ? next.end : current.end;
         current = TimeRange(start: current.start, end: latestEnd);
       } else {
         merged.add(current);

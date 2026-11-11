@@ -149,8 +149,7 @@ class InMemoryCalendarClient implements CalendarClient {
       () => {},
     );
 
-    final assignedId =
-        event.externalEventId ?? 'ext_evt_${_eventIdCounter++}';
+    final assignedId = event.externalEventId ?? 'ext_evt_${_eventIdCounter++}';
     final storedEvent = event.copyWith(externalEventId: assignedId);
     calendarEvents[assignedId] = storedEvent;
     return assignedId;

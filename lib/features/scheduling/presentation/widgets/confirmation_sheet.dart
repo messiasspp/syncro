@@ -11,7 +11,8 @@ import '../../domain/models/entity.dart';
 import '../../domain/models/event_type.dart';
 
 /// Parses a hex string like `'#7C4DFF'` into a Flutter [Color].
-Color parseHexColor(String hex, {Color fallback = SyncroColors.electricIndigo}) {
+Color parseHexColor(String hex,
+    {Color fallback = SyncroColors.electricIndigo}) {
   final cleaned = hex.replaceAll('#', '').trim();
   if (cleaned.length != 6 && cleaned.length != 8) return fallback;
   final fullHex = cleaned.length == 6 ? 'FF$cleaned' : cleaned;

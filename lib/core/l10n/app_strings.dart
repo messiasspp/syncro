@@ -48,9 +48,8 @@ class AppStrings {
   String get syncCalendarsTooltip => isPt
       ? 'Sincronizar com Calendários do Dispositivo'
       : 'Sync with Device Calendars';
-  String get resetDemoDataTooltip => isPt
-      ? 'Restaurar Cenários de Demonstração'
-      : 'Reset & Re-seed Demo Data';
+  String get resetDemoDataTooltip =>
+      isPt ? 'Restaurar Cenários de Demonstração' : 'Reset & Re-seed Demo Data';
   String get demoResetSuccess => isPt
       ? 'Cenários de demonstração recriados sem conflitos!'
       : 'Demo scenarios reset & re-seeded collision-free!';
@@ -68,6 +67,17 @@ class AppStrings {
   String get confirmAction => isPt ? 'Confirmar' : 'Confirm';
   String get shareAction => isPt ? 'Mensagem' : 'Share';
   String get syncedBadge => isPt ? 'Sincronizado' : 'Synced';
+
+  // Windowed Lazy Loading (all lists)
+  String loadMoreLabel(int remaining) => isPt
+      ? 'Carregar mais ($remaining restantes)'
+      : 'Load more ($remaining remaining)';
+  String showEarlierLabel(int hidden) => isPt
+      ? 'Mostrar anteriores ($hidden ocultos)'
+      : 'Show earlier ($hidden hidden)';
+  String windowRangeLabel(int from, int to, int total) =>
+      isPt ? 'Exibindo $from–$to de $total' : 'Showing $from–$to of $total';
+  String get endOfListLabel => isPt ? 'Fim da lista' : 'End of list';
 
   // Event Types Screen
   String get eventTypesHeader => isPt
@@ -102,8 +112,9 @@ class AppStrings {
   String get newEntityButton => isPt ? 'Novo Participante' : 'New Entity';
   String get customOverridesLabel =>
       isPt ? 'Restrição Personalizada' : 'Availability Override';
-  String get defaultScheduleLabel =>
-      isPt ? 'Segue regras padrão da categoria' : 'Follows default Event Type rules';
+  String get defaultScheduleLabel => isPt
+      ? 'Segue regras padrão da categoria'
+      : 'Follows default Event Type rules';
   String get viewProtocolRoadmap =>
       isPt ? 'Ver Protocolo (24 Visitas)' : 'View Protocol Roadmap (24 Visits)';
 
@@ -127,8 +138,7 @@ class AppStrings {
       isPt ? 'Aparência e Tema Visual' : 'Visual Appearance & Theme';
   String get darkGlassThemeLabel =>
       isPt ? 'Obsidian Dark (Glass)' : 'Obsidian Dark (Glass)';
-  String get lightGlassThemeLabel =>
-      isPt ? 'Luminous Light' : 'Luminous Light';
+  String get lightGlassThemeLabel => isPt ? 'Luminous Light' : 'Luminous Light';
   String get languageSectionTitle =>
       isPt ? 'Idioma e Formato de Hora' : 'Language & Time Format';
   String get use24HourLabel =>
@@ -144,9 +154,8 @@ class AppStrings {
       isPt ? 'Sincronizar Agora' : 'Sync All Confirmed Appointments';
   String get resetDemoButton =>
       isPt ? 'Restaurar Dados de Demonstração' : 'Reset Pre-seeded Demo Data';
-  String get swipeToConfirmHint => isPt
-      ? 'Deslize para confirmar →'
-      : 'Swipe right to confirm →';
+  String get swipeToConfirmHint =>
+      isPt ? 'Deslize para confirmar →' : 'Swipe right to confirm →';
   String get allDatesLabel => isPt ? 'Todas as Datas' : 'All Dates';
 
   // Weekday Names

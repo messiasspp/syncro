@@ -127,7 +127,8 @@ class SlotFinder {
           .toList();
 
       if (matchingTypeWindows.isEmpty) return const [];
-      baseWindows = IntervalMath.intersectLists(baseWindows, matchingTypeWindows);
+      baseWindows =
+          IntervalMath.intersectLists(baseWindows, matchingTypeWindows);
     }
 
     // Intersect with Entity custom overrides (if participant has specific restrictions)
@@ -138,7 +139,8 @@ class SlotFinder {
           .toList();
 
       if (matchingEntityWindows.isEmpty) return const [];
-      baseWindows = IntervalMath.intersectLists(baseWindows, matchingEntityWindows);
+      baseWindows =
+          IntervalMath.intersectLists(baseWindows, matchingEntityWindows);
     }
 
     return baseWindows;

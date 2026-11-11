@@ -6,7 +6,7 @@ import 'package:syncro/features/scheduling/domain/models/work_schedule.dart';
 import 'package:syncro/features/scheduling/domain/services/slot_finder.dart';
 
 void main() {
-  final standardWorkSchedule = WorkSchedule(
+  const standardWorkSchedule = WorkSchedule(
     workDays: {
       DateTime.monday,
       DateTime.tuesday,
@@ -20,13 +20,13 @@ void main() {
 
   group('Scenario 1: Friends Zone (Personal / Outside Work Hours)', () {
     // Rule: Outside work hours, Thursday evenings (19:00 - 22:00) or Saturdays (12:00 - 18:00)
-    final friendsZoneType = EventType(
+    const friendsZoneType = EventType(
       id: 'type_friends',
       name: 'Friends Zone',
       workHoursConstraint: WorkHoursConstraint.outsideWorkHours,
-      minDuration: const Duration(hours: 2),
-      maxDuration: const Duration(hours: 3),
-      allowedTimeWindows: const [
+      minDuration: Duration(hours: 2),
+      maxDuration: Duration(hours: 3),
+      allowedTimeWindows: [
         DayTimeWindow(
           dayOfWeek: DateTime.thursday,
           startHour: 19,
@@ -40,7 +40,7 @@ void main() {
       ],
     );
 
-    final mendy = Entity(
+    const mendy = Entity(
       id: 'entity_mendy',
       name: 'Mendy',
       defaultEventTypeId: 'type_friends',
@@ -85,15 +85,15 @@ void main() {
 
   group('Scenario 2: Clinical Research - Mounjaro Study (Professional / Work Hours + Buffers)', () {
     // Rule: Work hours only, Mon & Wed (08:00 - 12:00), 45m duration + 15m pre & post buffer
-    final mounjaroType = EventType(
+    const mounjaroType = EventType(
       id: 'type_mounjaro',
       name: 'Mounjaro Clinical Study',
       workHoursConstraint: WorkHoursConstraint.workHoursOnly,
-      minDuration: const Duration(minutes: 45),
-      maxDuration: const Duration(minutes: 45),
-      bufferBefore: const Duration(minutes: 15),
-      bufferAfter: const Duration(minutes: 15),
-      allowedTimeWindows: const [
+      minDuration: Duration(minutes: 45),
+      maxDuration: Duration(minutes: 45),
+      bufferBefore: Duration(minutes: 15),
+      bufferAfter: Duration(minutes: 15),
+      allowedTimeWindows: [
         DayTimeWindow(
           dayOfWeek: DateTime.monday,
           startHour: 8,
@@ -108,18 +108,18 @@ void main() {
     );
 
     // Patient 101: standard participant
-    final patient101 = Entity(
+    const patient101 = Entity(
       id: 'patient_101',
       name: 'Patient 101',
       defaultEventTypeId: 'type_mounjaro',
     );
 
     // Patient 102: custom override - can only attend Wednesdays after 10:00 AM
-    final patient102 = Entity(
+    const patient102 = Entity(
       id: 'patient_102',
       name: 'Patient 102',
       defaultEventTypeId: 'type_mounjaro',
-      customAvailabilityOverrides: const [
+      customAvailabilityOverrides: [
         DayTimeWindow(
           dayOfWeek: DateTime.wednesday,
           startHour: 10,

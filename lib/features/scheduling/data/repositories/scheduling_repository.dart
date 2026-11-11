@@ -177,7 +177,8 @@ class InMemorySchedulingRepository implements SchedulingRepository {
   }
 
   @override
-  Stream<List<Appointment>> watchAllAppointments() => _watch(getAllAppointments);
+  Stream<List<Appointment>> watchAllAppointments() =>
+      _watch(getAllAppointments);
 
   @override
   Future<void> upsertAppointment(Appointment appointment) async {

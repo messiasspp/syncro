@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/theme/syncro_theme.dart';
 import '../../../../core/widgets/glass_container.dart';
+import '../../../../core/widgets/windowed_pager.dart';
 import '../../domain/models/appointment.dart';
 import '../../domain/models/entity.dart';
 import '../../domain/models/event_type.dart';
@@ -33,6 +34,58 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
   String? _lastCascadeSummary;
   Map<int, DateTime> _previousVisitStarts = const {};
 
+  /// Windowed lazy loading for the candidate slot list and the protocol
+  /// visit sequence (each: 8 per page, at most 24 mounted).
+  final WindowedPager _slotsPager = WindowedPager(pageSize: 8, maxWindow: 24);
+  final WindowedPager _visitsPager = WindowedPager(pageSize: 8, maxWindow: 24);
+
+  @override
+  void initState() {
+    super.initState();
+    void refresh() {
+      if (mounted) setState(() {});
+    }
+
+    _slotsPager.attach(refresh);
+    _visitsPager.attach(refresh);
+  }
+
+  @override
+  void dispose() {
+    _slotsPager.detach();
+    _visitsPager.detach();
+    super.dispose();
+  }
+
+  /// Builds `[Show earlier] + window items + [Load more footer]` for a list
+  /// that lives inside the screen's outer scroll view.
+  List<Widget> _windowedItems({
+    required WindowedPager pager,
+    required int total,
+    required AppStrings strings,
+    required Widget Function(int globalIndex) itemBuilder,
+  }) {
+    if (total == 0) return const [];
+    final windowStart = pager.visibleStart(total);
+    final windowEnd = pager.visibleEnd(total);
+    return [
+      if (pager.hasEarlier && windowStart > 0)
+        PagerShowEarlierButton(
+          label: strings.showEarlierLabel(windowStart),
+          onTap: (ctx) => pager.loadEarlier(ctx, setState),
+        ),
+      for (var i = windowStart; i < windowEnd; i++)
+        pager.measure(i, itemBuilder(i)),
+      PagerFooter(
+        hasMore: pager.hasMore(total),
+        loadMoreLabel: strings.loadMoreLabel(pager.remaining(total)),
+        rangeLabel: strings.windowRangeLabel(windowStart + 1, windowEnd, total),
+        endLabel: strings.endOfListLabel,
+        onLoadMore: (ctx) => pager.loadMore(ctx, total, setState),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = ref.watch(appStringsProvider);
@@ -47,8 +100,7 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
     final workSchedule = workScheduleAsync.valueOrNull ?? const WorkSchedule();
     final enrollments =
         enrollmentsAsync.valueOrNull ?? const <ProtocolEnrollment>[];
-    final appointments =
-        appointmentsAsync.valueOrNull ?? const <Appointment>[];
+    final appointments = appointmentsAsync.valueOrNull ?? const <Appointment>[];
 
     final effectiveEntityId =
         _selectedEntityId ?? (entities.isNotEmpty ? entities.first.id : null);
@@ -139,9 +191,8 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                   isExpanded: true,
                   initialValue: selectedEntityId,
                   decoration: InputDecoration(
-                    labelText: strings.isPt
-                        ? 'Participante'
-                        : 'Participant (Entity)',
+                    labelText:
+                        strings.isPt ? 'Participante' : 'Participant (Entity)',
                     prefixIcon: const Icon(Icons.person_outline_rounded),
                   ),
                   items: entities
@@ -213,8 +264,10 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                         );
 
                         setState(() {
-                          _candidateSlots = slots.take(8).toList();
+                          // Ranked results, revealed 8 at a time by the pager.
+                          _candidateSlots = slots.take(40).toList();
                           _hasSearchedSlots = true;
+                          _slotsPager.reset();
                         });
                       },
               ),
@@ -232,9 +285,12 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                 ),
           ),
           const SizedBox(height: 10),
-          for (int i = 0; i < _candidateSlots.length; i++)
-            StaggeredReveal(
-              index: i,
+          ..._windowedItems(
+            pager: _slotsPager,
+            total: _candidateSlots.length,
+            strings: strings,
+            itemBuilder: (i) => StaggeredReveal(
+              index: i % _slotsPager.pageSize,
               child: _CandidateSlotGlassCard(
                 slot: _candidateSlots[i],
                 rankIndex: i,
@@ -259,9 +315,8 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                             .pushAppointmentToCalendar(newApt);
 
                         setState(() {
-                          _candidateSlots = _candidateSlots
-                              .where((s) => s != slot)
-                              .toList();
+                          _candidateSlots =
+                              _candidateSlots.where((s) => s != slot).toList();
                         });
 
                         if (context.mounted) {
@@ -278,6 +333,7 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                       },
               ),
             ),
+          ),
         ],
       ],
     );
@@ -342,6 +398,7 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                   onChanged: (val) {
                     setState(() {
                       _selectedEnrollmentId = val;
+                      _visitsPager.reset();
                       _lastCascadeSummary = null;
                       _previousVisitStarts = const {};
                     });
@@ -498,13 +555,18 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
               ),
         ),
         const SizedBox(height: 8),
-        for (final visit in protocolVisits)
-          _CascadeVisitDiffCard(
-            visit: visit,
+        ..._windowedItems(
+          pager: _visitsPager,
+          total: protocolVisits.length,
+          strings: strings,
+          itemBuilder: (i) => _CascadeVisitDiffCard(
+            visit: protocolVisits[i],
             selectedVisitIndex: _selectedVisitIndex,
-            previousStart: _previousVisitStarts[visit.visitIndex ?? -1],
+            previousStart:
+                _previousVisitStarts[protocolVisits[i].visitIndex ?? -1],
             strings: strings,
           ),
+        ),
       ],
     );
   }
@@ -691,10 +753,7 @@ class _CascadeVisitDiffCard extends StatelessWidget {
             radius: 15,
             backgroundColor: didShift
                 ? SyncroColors.clinicalEmerald.withValues(alpha: 0.22)
-                : Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.18),
+                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.18),
             child: Text(
               '${vIdx + 1}',
               style: TextStyle(
