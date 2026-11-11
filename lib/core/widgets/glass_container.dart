@@ -22,73 +22,81 @@ class AmbientMeshBackground extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        ColoredBox(
-          color: isDark ? SyncroColors.darkCanvas : SyncroColors.lightCanvas,
-        ),
-        // Top-left Indigo / Amethyst ambient orb
-        Positioned(
-          top: -90,
-          left: -70,
-          child: IgnorePointer(
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    SyncroColors.electricIndigo.withValues(
-                      alpha: isDark ? 0.24 : 0.14,
+        RepaintBoundary(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(
+                color:
+                    isDark ? SyncroColors.darkCanvas : SyncroColors.lightCanvas,
+              ),
+              // Top-left Indigo / Amethyst ambient orb
+              Positioned(
+                top: -90,
+                left: -70,
+                child: IgnorePointer(
+                  child: Container(
+                    width: 300,
+                    height: 300,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          SyncroColors.electricIndigo.withValues(
+                            alpha: isDark ? 0.24 : 0.14,
+                          ),
+                          SyncroColors.electricIndigo.withValues(alpha: 0.0),
+                        ],
+                      ),
                     ),
-                    SyncroColors.electricIndigo.withValues(alpha: 0.0),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
-        ),
-        // Center-right Clinical Emerald ambient orb
-        Positioned(
-          top: 240,
-          right: -90,
-          child: IgnorePointer(
-            child: Container(
-              width: 320,
-              height: 320,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    SyncroColors.clinicalEmerald.withValues(
-                      alpha: isDark ? 0.18 : 0.11,
+              // Center-right Clinical Emerald ambient orb
+              Positioned(
+                top: 240,
+                right: -90,
+                child: IgnorePointer(
+                  child: Container(
+                    width: 320,
+                    height: 320,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          SyncroColors.clinicalEmerald.withValues(
+                            alpha: isDark ? 0.18 : 0.11,
+                          ),
+                          SyncroColors.clinicalEmerald.withValues(alpha: 0.0),
+                        ],
+                      ),
                     ),
-                    SyncroColors.clinicalEmerald.withValues(alpha: 0.0),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
-        ),
-        // Bottom-left Amethyst ambient orb behind the floating nav bar
-        Positioned(
-          bottom: -60,
-          left: 30,
-          child: IgnorePointer(
-            child: Container(
-              width: 260,
-              height: 260,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    SyncroColors.amethystViolet.withValues(
-                      alpha: isDark ? 0.20 : 0.12,
+              // Bottom-left Amethyst ambient orb behind the floating nav bar
+              Positioned(
+                bottom: -60,
+                left: 30,
+                child: IgnorePointer(
+                  child: Container(
+                    width: 260,
+                    height: 260,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          SyncroColors.amethystViolet.withValues(
+                            alpha: isDark ? 0.20 : 0.12,
+                          ),
+                          SyncroColors.amethystViolet.withValues(alpha: 0.0),
+                        ],
+                      ),
                     ),
-                    SyncroColors.amethystViolet.withValues(alpha: 0.0),
-                  ],
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
         child,
@@ -97,14 +105,17 @@ class AmbientMeshBackground extends StatelessWidget {
   }
 }
 
-/// Frosted glassmorphic card/surface powered by `BackdropFilter` Gaussian blur,
-/// translucent gradient surface, and specular border highlight.
+/// Translucent glassmorphic card/surface with specular border highlight and
+/// GPU-cached [RepaintBoundary] for 120 FPS scrolling.
+/// Real-time [BackdropFilter] blur is opt-in via [enableBlur] so scrolling
+/// lists never trigger per-card offscreen framebuffer allocations.
 class GlassContainer extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
   final EdgeInsetsGeometry? margin;
   final double borderRadius;
   final double blurSigma;
+  final bool enableBlur;
   final Color? tintColor;
   final Color? borderColor;
   final VoidCallback? onTap;
@@ -116,6 +127,7 @@ class GlassContainer extends StatelessWidget {
     this.margin,
     this.borderRadius = 20,
     this.blurSigma = 16,
+    this.enableBlur = false,
     this.tintColor,
     this.borderColor,
     this.onTap,
@@ -131,39 +143,48 @@ class GlassContainer extends StatelessWidget {
             ? Colors.white.withValues(alpha: 0.12)
             : SyncroColors.electricIndigo.withValues(alpha: 0.14));
 
-    Widget surface = Container(
-      margin: margin,
+    final innerBox = Container(
+      padding: padding,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(borderRadius),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(borderRadius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-          child: Container(
-            padding: padding,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(borderRadius),
-              border: Border.all(color: effectiveBorder, width: 1.1),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  effectiveTint.withValues(alpha: isDark ? 0.78 : 0.88),
-                  effectiveTint.withValues(alpha: isDark ? 0.62 : 0.74),
-                ],
-              ),
-            ),
-            child: child,
-          ),
+        border: Border.all(color: effectiveBorder, width: 1.1),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            effectiveTint.withValues(alpha: isDark ? 0.86 : 0.92),
+            effectiveTint.withValues(alpha: isDark ? 0.72 : 0.82),
+          ],
         ),
+      ),
+      child: child,
+    );
+
+    Widget surface = RepaintBoundary(
+      child: Container(
+        margin: margin,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(borderRadius),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.04),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: enableBlur
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(borderRadius),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(
+                    sigmaX: blurSigma,
+                    sigmaY: blurSigma,
+                  ),
+                  child: innerBox,
+                ),
+              )
+            : innerBox,
       ),
     );
 

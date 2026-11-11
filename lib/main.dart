@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +18,8 @@ import 'features/scheduling/presentation/screens/settings_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // Smooths touch input sampling against 120Hz VSync ticks
+  GestureBinding.instance.resamplingEnabled = true;
   runApp(
     const ProviderScope(
       child: SyncroApp(),
