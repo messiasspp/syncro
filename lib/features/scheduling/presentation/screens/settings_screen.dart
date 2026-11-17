@@ -186,9 +186,15 @@ class SettingsScreen extends ConsumerWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    for (int day = DateTime.monday;
-                        day <= DateTime.sunday;
-                        day++)
+                    for (final day in const [
+                      DateTime.sunday,
+                      DateTime.monday,
+                      DateTime.tuesday,
+                      DateTime.wednesday,
+                      DateTime.thursday,
+                      DateTime.friday,
+                      DateTime.saturday,
+                    ])
                       _WeekdayOrb(
                         label: strings.weekdayName(day, short: true),
                         isSelected: workSchedule.workDays.contains(day),

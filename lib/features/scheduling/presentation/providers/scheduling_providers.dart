@@ -12,6 +12,7 @@ import '../../domain/models/entity.dart';
 import '../../domain/models/event_type.dart';
 import '../../domain/models/external_calendar.dart';
 import '../../domain/models/protocol_enrollment.dart';
+import '../../domain/models/time_range.dart';
 import '../../domain/models/work_schedule.dart';
 import '../../domain/services/backup_service.dart';
 import '../../domain/services/calendar_sync_service.dart';
@@ -116,4 +117,90 @@ final calendarConflictsProvider =
 /// Backup, restore & RFC 5545 calendar export service provider.
 final backupServiceProvider = Provider<BackupService>((ref) {
   return const BackupService();
+});
+
+/// User-selected primary calendar account ID (e.g. primary Google Calendar on device).
+final selectedPrimaryCalendarIdProvider = StateProvider<String?>((ref) {
+  return null;
+});
+
+/// Resolves the active primary Google/local calendar on the device:
+/// prefers [selectedPrimaryCalendarIdProvider], then primary `@gmail.com` account,
+/// then the first writable non-Syncro calendar.
+final activePrimaryCalendarProvider = Provider<ExternalCalendar?>((ref) {
+  final calendars = ref.watch(externalCalendarsFutureProvider).valueOrNull ??
+      const <ExternalCalendar>[];
+  if (calendars.isEmpty) return null;
+
+  final selectedId = ref.watch(selectedPrimaryCalendarIdProvider);
+  if (selectedId != null) {
+    final match = calendars.where((c) => c.id == selectedId).firstOrNull;
+    if (match != null) return match;
+  }
+
+  final nonSyncroWritable = calendars
+      .where((c) =>
+          !c.isReadOnly &&
+          !c.name.startsWith('Syncro') &&
+          c.accountName != 'Syncro')
+      .toList();
+
+  final gmailPrimary = nonSyncroWritable
+      .where((c) =>
+          c.name.contains('@gmail.com') ||
+          (c.accountName?.contains('@gmail.com') ?? false))
+      .firstOrNull;
+
+  return gmailPrimary ?? nonSyncroWritable.firstOrNull ?? calendars.first;
+});
+
+/// Controls whether external Google/device calendar events are rendered directly in Tab 1 (Agenda).
+final showExternalEventsInAgendaProvider = StateProvider<bool>((ref) {
+  return true;
+});
+
+/// Fetches live external events from connected device calendars (excluding Syncro's own synced copies)
+/// so the user can view their real Google Calendar schedule directly inside Syncro's Agenda.
+final externalCalendarEventsProvider =
+    FutureProvider<List<ExternalCalendarEvent>>((ref) async {
+  final showExternal = ref.watch(showExternalEventsInAgendaProvider);
+  if (!showExternal) return const [];
+
+  final appointments =
+      ref.watch(appointmentsStreamProvider).valueOrNull ?? const <Appointment>[];
+  final calendars = await ref.watch(externalCalendarsFutureProvider.future);
+  if (calendars.isEmpty) return const [];
+
+  final client = ref.watch(calendarClientProvider);
+  final knownSyncroIds = <String>{
+    for (final a in appointments)
+      if (a.externalCalendarEventId != null) a.externalCalendarEventId!,
+  };
+
+  final now = DateTime.now();
+  final range = TimeRange(
+    start: DateTime(now.year, now.month - 1, 1),
+    end: DateTime(now.year, now.month + 4, 28, 23, 59),
+  );
+
+  final List<ExternalCalendarEvent> allExternal = [];
+  for (final cal in calendars) {
+    if (cal.name.startsWith('Syncro') || cal.accountName == 'Syncro') {
+      continue;
+    }
+    final events = await client.retrieveEvents(
+      calendarId: cal.id,
+      range: range,
+    );
+    for (final evt in events) {
+      if (evt.externalEventId != null &&
+          knownSyncroIds.contains(evt.externalEventId)) {
+        continue;
+      }
+      allExternal.add(evt);
+    }
+  }
+
+  allExternal.sort((a, b) => a.timeRange.compareTo(b.timeRange));
+  return allExternal;
 });

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -43,6 +45,10 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
   @override
   void initState() {
     super.initState();
+    if (Platform.isAndroid || Platform.isIOS) {
+      final now = DateTime.now();
+      _focusedDate = DateTime(now.year, now.month, now.day);
+    }
     _pager.attach(() {
       if (mounted) setState(() {});
     });
@@ -56,7 +62,7 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
 
   DateTime _startOfWeek(DateTime date) {
     return DateTime(date.year, date.month, date.day)
-        .subtract(Duration(days: date.weekday - 1));
+        .subtract(Duration(days: date.weekday % 7));
   }
 
   DateTime _endOfWeek(DateTime date) {
@@ -85,13 +91,44 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
 
     final eventTypes = eventTypesAsync.valueOrNull ?? const <EventType>[];
     final entities = entitiesAsync.valueOrNull ?? const <Entity>[];
-    final allAppointments =
+    final internalAppointments =
         appointmentsAsync.valueOrNull ?? const <Appointment>[];
+    final externalEvents =
+        ref.watch(externalCalendarEventsProvider).valueOrNull ?? const [];
+    final externalCalendars =
+        ref.watch(externalCalendarsFutureProvider).valueOrNull ?? const [];
 
-    final eventTypeById = {for (final et in eventTypes) et.id: et};
+    final eventTypeById = <String, EventType>{
+      for (final et in eventTypes) et.id: et,
+      for (final cal in externalCalendars)
+        '__ext_cal_${cal.id}__': EventType(
+          id: '__ext_cal_${cal.id}__',
+          name: cal.name,
+          colorHex: cal.colorHex,
+          minDuration: const Duration(minutes: 30),
+          maxDuration: const Duration(minutes: 60),
+        ),
+    };
     final entityById = {for (final e in entities) e.id: e};
     final conflicts =
         ref.watch(calendarConflictsProvider).valueOrNull ?? const <String, ConflictReport>{};
+
+    final externalAsAppointments = <Appointment>[
+      for (final evt in externalEvents)
+        Appointment(
+          id: 'ext_${evt.calendarId}_${evt.externalEventId ?? evt.timeRange.start.millisecondsSinceEpoch}',
+          entityId: evt.title,
+          eventTypeId: '__ext_cal_${evt.calendarId}__',
+          timeRange: evt.timeRange,
+          status: AppointmentStatus.confirmed,
+          externalCalendarEventId: evt.externalEventId ?? 'google_cal',
+        ),
+    ];
+
+    final allAppointments = <Appointment>[
+      ...internalAppointments,
+      ...externalAsAppointments,
+    ]..sort((a, b) => a.timeRange.compareTo(b.timeRange));
 
     final filteredByType = _selectedEventTypeId == null
         ? allAppointments
@@ -187,6 +224,7 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
         ref.invalidate(calendarConflictsProvider);
         ref.invalidate(appointmentsStreamProvider);
         ref.invalidate(externalCalendarsFutureProvider);
+        ref.invalidate(externalCalendarEventsProvider);
         await ref.read(calendarConflictsProvider.future);
       },
       child: CustomScrollView(
@@ -458,9 +496,11 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                         });
                       },
                       onTodayTap: () {
+                        final now = DateTime.now();
+                        final today = DateTime(now.year, now.month, now.day);
                         _applyFilter(() {
-                          _focusedDate = DateTime(2026, 10, 19);
-                          _selectedDateFilter = DateTime(2026, 10, 19);
+                          _focusedDate = today;
+                          _selectedDateFilter = today;
                         });
                       },
                     ),
@@ -487,9 +527,11 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                         });
                       },
                       onCurrentWeekTap: () {
+                        final now = DateTime.now();
+                        final today = DateTime(now.year, now.month, now.day);
                         _applyFilter(() {
-                          _focusedDate = DateTime(2026, 10, 19);
-                          _selectedDateFilter = DateTime(2026, 10, 19);
+                          _focusedDate = today;
+                          _selectedDateFilter = today;
                         });
                       },
                     ),
@@ -1555,19 +1597,19 @@ class _GlassMonthCalendarMatrix extends StatelessWidget {
     final now = DateTime.now();
 
     final firstOfMonth = DateTime(focusedMonth.year, focusedMonth.month, 1);
-    final offsetDays = (firstOfMonth.weekday - 1) % 7;
+    final offsetDays = firstOfMonth.weekday % 7;
     final calendarStart = firstOfMonth.subtract(Duration(days: offsetDays));
     final allDays =
         List.generate(42, (i) => calendarStart.add(Duration(days: i)));
 
     final weekdayLabels = [
+      DateTime.sunday,
       DateTime.monday,
       DateTime.tuesday,
       DateTime.wednesday,
       DateTime.thursday,
       DateTime.friday,
       DateTime.saturday,
-      DateTime.sunday,
     ].map((w) => strings.weekdayName(w, short: true).toUpperCase()).toList();
 
     return GlassContainer(
@@ -1808,7 +1850,7 @@ class _GlassWeekMatrix extends StatelessWidget {
 
   DateTime _startOfWeek(DateTime date) {
     return DateTime(date.year, date.month, date.day)
-        .subtract(Duration(days: date.weekday - 1));
+        .subtract(Duration(days: date.weekday % 7));
   }
 
   @override

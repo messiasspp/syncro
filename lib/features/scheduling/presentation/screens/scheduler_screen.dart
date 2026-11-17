@@ -194,7 +194,7 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                   initialValue: selectedEntityId,
                   decoration: InputDecoration(
                     labelText:
-                        strings.isPt ? 'Participante' : 'Participant (Entity)',
+                        strings.isPt ? 'Pessoa' : 'People',
                     prefixIcon: const Icon(Icons.person_outline_rounded),
                   ),
                   items: entities
@@ -223,7 +223,7 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                   dense: true,
                   leading: const Icon(Icons.rule_folder_outlined),
                   title: Text(
-                    '${strings.isPt ? "Categoria" : "Category"}: ${eventType.name}',
+                    '${strings.isPt ? "Grupo" : "Group"}: ${eventType.name}',
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   subtitle: Text(
@@ -248,9 +248,13 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                     ? null
                     : () async {
                         HapticFeedback.mediumImpact();
+                        final now = DateTime.now();
+                        final todayStart = DateTime(now.year, now.month, now.day);
                         final searchWindow = TimeRange(
-                          start: DateTime(2026, 10, 19),
-                          end: DateTime(2026, 11, 2, 23, 59),
+                          start: todayStart,
+                          end: todayStart.add(
+                            const Duration(days: 14, hours: 23, minutes: 59),
+                          ),
                         );
                         final busy = await ref
                             .read(calendarSyncServiceProvider)

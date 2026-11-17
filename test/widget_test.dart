@@ -25,8 +25,8 @@ void main() {
     // 1. Verify AppBar ('Syncro') & 5 Navigation Destinations in English
     expect(find.text('Syncro'), findsOneWidget);
     expect(find.text('Agenda'), findsWidgets);
-    expect(find.text('Event Types'), findsOneWidget);
-    expect(find.text('Entities'), findsOneWidget);
+    expect(find.text('Groups'), findsOneWidget);
+    expect(find.text('Peoples'), findsOneWidget);
     expect(find.text('Scheduler'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
 
@@ -35,19 +35,19 @@ void main() {
     expect(find.text('Mounjaro Clinical Study'), findsWidgets);
     expect(find.text('49'), findsWidgets);
 
-    // 3. Navigate to Event Types tab
-    await tester.tap(find.text('Event Types'));
+    // 3. Navigate to Groups tab
+    await tester.tap(find.text('Groups'));
     await tester.pumpAndSettle();
     expect(
-      find.text('Event Categories & Scheduling Rules'),
+      find.text('Groups & Scheduling Rules'),
       findsOneWidget,
     );
 
-    // 4. Navigate to Entities tab
-    await tester.tap(find.text('Entities'));
+    // 4. Navigate to Peoples tab
+    await tester.tap(find.text('Peoples'));
     await tester.pumpAndSettle();
     expect(
-      find.text('Participants, Friends & Patients'),
+      find.text('Peoples, Friends & Patients'),
       findsOneWidget,
     );
     expect(find.text('Mendy'), findsWidgets);

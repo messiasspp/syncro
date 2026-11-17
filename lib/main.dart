@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
@@ -16,6 +17,7 @@ import 'features/scheduling/presentation/screens/entities_screen.dart';
 import 'features/scheduling/presentation/screens/event_types_screen.dart';
 import 'features/scheduling/presentation/screens/scheduler_screen.dart';
 import 'features/scheduling/presentation/screens/settings_screen.dart';
+import 'features/scheduling/presentation/widgets/calendar_connect_sheet.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +70,19 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Auto-connect and sync to device/Google calendars on mobile app startup
+    if (Platform.isAndroid || Platform.isIOS) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await ref.read(externalCalendarsFutureProvider.future);
+        await ref.read(calendarSyncServiceProvider).syncAll();
+        ref.invalidate(externalCalendarsFutureProvider);
+        ref.invalidate(externalCalendarEventsProvider);
+        ref.invalidate(calendarConflictsProvider);
+        if (!mounted) return;
+        CalendarConnectSheet.show(context);
+      });
+    }
   }
 
   @override
@@ -79,9 +94,10 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Re-evaluate external calendar collisions when returning from Google Calendar or device apps
+      // Re-evaluate external calendar collisions & live Google events when returning to Syncro
       ref.invalidate(calendarConflictsProvider);
       ref.invalidate(externalCalendarsFutureProvider);
+      ref.invalidate(externalCalendarEventsProvider);
     }
   }
 
@@ -247,24 +263,7 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen>
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: AnimatedScaleTap(
-              onTap: () async {
-                HapticFeedback.mediumImpact();
-                final result =
-                    await ref.read(calendarSyncServiceProvider).syncAll();
-                ref.invalidate(externalCalendarsFutureProvider);
-                ref.invalidate(calendarConflictsProvider);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Synced: ${result.pushedAppointmentsCount} pushed, '
-                        '${result.updatedAppointmentsCount} updated, '
-                        '${result.createdCalendarsCount} sub-calendars created.',
-                      ),
-                    ),
-                  );
-                }
-              },
+              onTap: () => CalendarConnectSheet.show(context),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 11,

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import '../../data/calendar/calendar_client.dart';
 import '../../data/repositories/scheduling_repository.dart';
 import '../models/appointment.dart';
@@ -20,13 +22,45 @@ class CalendarSyncService {
   })  : _repository = repository,
         _calendarClient = calendarClient;
 
-  /// Ensures a dedicated sub-calendar (e.g., `"Syncro — Mounjaro Clinical Study"`)
-  /// exists on the device for [eventType] and persists its `calendarMappingId`.
+  /// Ensures a target calendar exists on the device for [eventType] and persists its `calendarMappingId`.
+  /// On Android/iOS, automatically routes to the user's primary writable Google Calendar (`@gmail.com`)
+  /// rather than an isolated offline `Syncro` local account that Google Calendar hides by default.
   Future<String> ensureDedicatedCalendarForEventType(
     EventType eventType,
   ) async {
     final calendars = await _calendarClient.retrieveCalendars();
     final existingMappingId = eventType.calendarMappingId;
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      final existingCal =
+          calendars.where((c) => c.id == existingMappingId).firstOrNull;
+      if (existingCal != null &&
+          !existingCal.isReadOnly &&
+          !existingCal.name.startsWith('Syncro') &&
+          existingCal.accountName != 'Syncro') {
+        return existingCal.id;
+      }
+
+      final writableUserCals = calendars
+          .where((c) =>
+              !c.isReadOnly &&
+              !c.name.startsWith('Syncro') &&
+              c.accountName != 'Syncro')
+          .toList();
+      final primaryGmail = writableUserCals
+          .where((c) =>
+              c.name.contains('@gmail.com') ||
+              (c.accountName?.contains('@gmail.com') ?? false))
+          .firstOrNull;
+      final chosen = primaryGmail ?? writableUserCals.firstOrNull;
+      if (chosen != null) {
+        final updatedEventType = eventType.copyWith(
+          calendarMappingId: chosen.id,
+        );
+        await _repository.upsertEventType(updatedEventType);
+        return chosen.id;
+      }
+    }
 
     if (existingMappingId != null &&
         calendars.any((c) => c.id == existingMappingId)) {
@@ -125,8 +159,11 @@ class CalendarSyncService {
     final entity = await _repository.getEntityById(appointment.entityId);
     final participantName = entity?.name ?? appointment.entityId;
 
+    final previousMappingId = eventType.calendarMappingId;
     final targetCalendarId =
         await ensureDedicatedCalendarForEventType(eventType);
+    final didCalendarChange =
+        previousMappingId != null && previousMappingId != targetCalendarId;
 
     final visitSuffix = appointment.visitIndex != null
         ? ' (Visit #${appointment.visitIndex! + 1})'
@@ -146,7 +183,8 @@ class CalendarSyncService {
     }
 
     final externalEvent = ExternalCalendarEvent(
-      externalEventId: appointment.externalCalendarEventId,
+      externalEventId:
+          didCalendarChange ? null : appointment.externalCalendarEventId,
       calendarId: targetCalendarId,
       title: title,
       description: descriptionBuffer.toString().trim(),

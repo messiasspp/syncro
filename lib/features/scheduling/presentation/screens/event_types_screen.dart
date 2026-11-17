@@ -148,7 +148,7 @@ Future<void> _showCreateEventTypeDialog(
                     controller: nameCtrl,
                     decoration: InputDecoration(
                       labelText:
-                          strings.isPt ? 'Nome da Categoria' : 'Category Name',
+                          strings.isPt ? 'Nome do Grupo' : 'Group Name',
                       hintText: 'e.g. Tennis Club / Cardiology Study',
                     ),
                   ),
@@ -291,6 +291,7 @@ Future<void> _showCreateEventTypeDialog(
                   final preMin = int.tryParse(bufBeforeCtrl.text) ?? 0;
                   final postMin = int.tryParse(bufAfterCtrl.text) ?? 0;
 
+                  final primaryCal = ref.read(activePrimaryCalendarProvider);
                   final newEt = EventType(
                     id: 'et_${DateTime.now().millisecondsSinceEpoch}',
                     name: name,
@@ -303,6 +304,7 @@ Future<void> _showCreateEventTypeDialog(
                     bufferBefore: Duration(minutes: preMin),
                     bufferAfter: Duration(minutes: postMin),
                     schedulingMode: selectedMode,
+                    calendarMappingId: primaryCal?.id,
                   );
                   await ref
                       .read(schedulingRepositoryProvider)

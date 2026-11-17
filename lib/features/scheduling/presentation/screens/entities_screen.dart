@@ -188,8 +188,8 @@ Future<void> _showCreateEntityDialog(
                       initialValue: selectedEventTypeId,
                       decoration: InputDecoration(
                         labelText: strings.isPt
-                            ? 'Categoria Padrão'
-                            : 'Default Event Type',
+                            ? 'Grupo Padrão'
+                            : 'Default Group',
                       ),
                       items: eventTypes
                           .map(
@@ -238,6 +238,7 @@ Future<void> _showCreateEntityDialog(
                     targetTypeId = selectedEventTypeId!;
                   } else {
                     targetTypeId = 'et_default_general';
+                    final primaryCal = ref.read(activePrimaryCalendarProvider);
                     await repo.upsertEventType(
                       EventType(
                         id: targetTypeId,
@@ -248,6 +249,7 @@ Future<void> _showCreateEntityDialog(
                         workHoursConstraint: WorkHoursConstraint.bothFlexible,
                         minDuration: const Duration(minutes: 45),
                         maxDuration: const Duration(minutes: 60),
+                        calendarMappingId: primaryCal?.id,
                       ),
                     );
                   }

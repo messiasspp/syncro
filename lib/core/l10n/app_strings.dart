@@ -56,8 +56,8 @@ class AppStrings {
 
   // Navigation Tabs
   String get tabAgenda => isPt ? 'Agenda' : 'Agenda';
-  String get tabEventTypes => isPt ? 'Tipos' : 'Event Types';
-  String get tabEntities => isPt ? 'Pessoas' : 'Entities';
+  String get tabEventTypes => isPt ? 'Grupos' : 'Groups';
+  String get tabEntities => isPt ? 'Pessoas' : 'Peoples';
   String get tabScheduler => isPt ? 'Motor' : 'Scheduler';
   String get tabSettings => isPt ? 'Ajustes' : 'Settings';
 
@@ -131,8 +131,8 @@ class AppStrings {
   String get exportJsonLabel =>
       isPt ? 'Exportar Backup Completo (JSON)' : 'Export Full Backup (JSON)';
   String get exportJsonSubtitle => isPt
-      ? 'Protocolos, pessoas, regras e agendamentos'
-      : 'Protocols, entities, event types & appointments';
+      ? 'Protocolos, pessoas, grupos e agendamentos'
+      : 'Protocols, peoples, groups & appointments';
   String get exportIcsLabel =>
       isPt ? 'Exportar Calendário Padrão (.ics)' : 'Export Standard Calendar (.ics)';
   String get exportIcsSubtitle => isPt
@@ -173,12 +173,12 @@ class AppStrings {
       isPt ? 'Exibindo $from–$to de $total' : 'Showing $from–$to of $total';
   String get endOfListLabel => isPt ? 'Fim da lista' : 'End of list';
 
-  // Event Types Screen
+  // Groups Screen
   String get eventTypesHeader => isPt
-      ? 'Categorias e Regras de Agendamento'
-      : 'Event Categories & Scheduling Rules';
+      ? 'Grupos e Regras de Agendamento'
+      : 'Groups & Scheduling Rules';
   String get newEventTypeButton =>
-      isPt ? 'Novo Tipo de Evento' : 'New Event Type';
+      isPt ? 'Novo Grupo' : 'New Group';
   String get workHoursOnlyLabel =>
       isPt ? 'Apenas Horário Comercial' : 'Work Hours Only';
   String get outsideWorkHoursLabel =>
@@ -199,16 +199,16 @@ class AppStrings {
       ? 'Sub-calendário será criado ao sincronizar'
       : 'Sub-calendar created on next sync';
 
-  // Entities Screen
+  // Peoples Screen
   String get entitiesHeader => isPt
-      ? 'Participantes, Amigos e Pacientes'
-      : 'Participants, Friends & Patients';
-  String get newEntityButton => isPt ? 'Novo Participante' : 'New Entity';
+      ? 'Pessoas, Amigos e Pacientes'
+      : 'Peoples, Friends & Patients';
+  String get newEntityButton => isPt ? 'Nova Pessoa' : 'New People';
   String get customOverridesLabel =>
       isPt ? 'Restrição Personalizada' : 'Availability Override';
   String get defaultScheduleLabel => isPt
-      ? 'Segue regras padrão da categoria'
-      : 'Follows default Event Type rules';
+      ? 'Segue regras padrão do grupo'
+      : 'Follows default Group rules';
   String get viewProtocolRoadmap =>
       isPt ? 'Ver Protocolo (24 Visitas)' : 'View Protocol Roadmap (24 Visits)';
 

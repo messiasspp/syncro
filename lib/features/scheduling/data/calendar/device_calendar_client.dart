@@ -72,18 +72,28 @@ class NativeDeviceCalendarClient implements CalendarClient {
     try {
       final result = await _plugin.retrieveCalendars();
       final calendars = result.data ?? const <Calendar>[];
-      return calendars
-          .where((c) => c.id != null)
-          .map(
-            (c) => ExternalCalendar(
-              id: c.id!,
-              name: c.name ?? 'Unnamed Calendar',
-              accountName: c.accountName,
-              colorHex: _intColorToHex(c.color),
-              isReadOnly: c.isReadOnly ?? false,
-            ),
-          )
-          .toList();
+      final List<ExternalCalendar> validCalendars = [];
+      for (final c in calendars) {
+        if (c.id == null) continue;
+        // Automatically purge legacy offline 'Syncro' sub-calendars so only real Google/device accounts remain
+        if (c.accountName == 'Syncro' ||
+            (c.name != null && c.name!.startsWith('Syncro —'))) {
+          try {
+            await _plugin.deleteCalendar(c.id!);
+          } catch (_) {}
+          continue;
+        }
+        validCalendars.add(
+          ExternalCalendar(
+            id: c.id!,
+            name: c.name ?? 'Unnamed Calendar',
+            accountName: c.accountName,
+            colorHex: _intColorToHex(c.color),
+            isReadOnly: c.isReadOnly ?? false,
+          ),
+        );
+      }
+      return validCalendars;
     } on MissingPluginException {
       return _fallbackClient.retrieveCalendars();
     }
@@ -187,9 +197,22 @@ class NativeDeviceCalendarClient implements CalendarClient {
 
     try {
       final location = tz.local;
+      String? targetEventId = event.externalEventId;
+      if (targetEventId != null) {
+        final existingInCal = await _plugin.retrieveEvents(
+          event.calendarId,
+          RetrieveEventsParams(eventIds: [targetEventId]),
+        );
+        final found = (existingInCal.data ?? const <Event>[])
+            .any((e) => e.eventId == targetEventId);
+        if (!found) {
+          targetEventId = null;
+        }
+      }
+
       final deviceEvent = Event(
         event.calendarId,
-        eventId: event.externalEventId,
+        eventId: targetEventId,
         title: event.title,
         description: event.description,
         start: tz.TZDateTime.from(event.timeRange.start, location),
