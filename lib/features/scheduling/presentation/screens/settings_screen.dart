@@ -6,6 +6,7 @@ import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/theme/syncro_theme.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../domain/models/work_schedule.dart';
+import '../../domain/services/backup_service.dart';
 import '../providers/scheduling_providers.dart';
 
 /// Tab 5: Glassmorphic Control Center Settings (Theme, Localization, Work Schedule, Connected Calendars).
@@ -416,6 +417,104 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
         ),
+        const SizedBox(height: 14),
+
+        // 5. Data Management, Full Backup & Standard ICS Export
+        StaggeredReveal(
+          index: 4,
+          child: GlassContainer(
+            padding: const EdgeInsets.all(16),
+            borderRadius: 20,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.backup_table_rounded,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        strings.dataManagementSectionTitle,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                // Export JSON Card
+                _DataActionTile(
+                  icon: Icons.data_object_rounded,
+                  title: strings.exportJsonLabel,
+                  subtitle: strings.exportJsonSubtitle,
+                  buttonLabel: strings.copyJsonAction,
+                  accentColor: Theme.of(context).colorScheme.primary,
+                  onTap: () async {
+                    HapticFeedback.lightImpact();
+                    final repo = ref.read(schedulingRepositoryProvider);
+                    final backupService = ref.read(backupServiceProvider);
+                    final json = await backupService.exportBackupJson(repo);
+                    if (context.mounted) {
+                      _showExportDialog(
+                        context,
+                        title: strings.exportJsonLabel,
+                        content: json,
+                        filename:
+                            'syncro_backup_${DateTime.now().millisecondsSinceEpoch}.json',
+                        strings: strings,
+                        backupService: backupService,
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(height: 10),
+                // Export ICS Card
+                _DataActionTile(
+                  icon: Icons.calendar_month_rounded,
+                  title: strings.exportIcsLabel,
+                  subtitle: strings.exportIcsSubtitle,
+                  buttonLabel: strings.copyIcsAction,
+                  accentColor: SyncroColors.clinicalEmerald,
+                  onTap: () async {
+                    HapticFeedback.lightImpact();
+                    final repo = ref.read(schedulingRepositoryProvider);
+                    final backupService = ref.read(backupServiceProvider);
+                    final ics = await backupService.exportIcs(repo);
+                    if (context.mounted) {
+                      _showExportDialog(
+                        context,
+                        title: strings.exportIcsLabel,
+                        content: ics,
+                        filename:
+                            'syncro_calendar_${DateTime.now().millisecondsSinceEpoch}.ics',
+                        strings: strings,
+                        backupService: backupService,
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(height: 10),
+                // Restore JSON Card
+                _DataActionTile(
+                  icon: Icons.restore_page_rounded,
+                  title: strings.importJsonLabel,
+                  subtitle: strings.importJsonSubtitle,
+                  buttonLabel: strings.pasteAndImportAction,
+                  accentColor: SyncroColors.amberSuggested,
+                  onTap: () {
+                    HapticFeedback.mediumImpact();
+                    _showImportDialog(context, ref, strings: strings);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -529,4 +628,318 @@ class _WeekdayOrb extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DataActionTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String buttonLabel;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  const _DataActionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.buttonLabel,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: accentColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: accentColor.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: accentColor.withValues(alpha: 0.16),
+            ),
+            child: Icon(icon, size: 20, color: accentColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.color
+                        ?.withValues(alpha: 0.75),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonal(
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              backgroundColor: accentColor.withValues(alpha: 0.20),
+              foregroundColor: accentColor,
+            ),
+            onPressed: onTap,
+            child: Text(
+              buttonLabel,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _showExportDialog(
+  BuildContext context, {
+  required String title,
+  required String content,
+  required String filename,
+  required AppStrings strings,
+  required BackupService backupService,
+}) async {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return showDialog<void>(
+    context: context,
+    builder: (dialogCtx) => AlertDialog(
+      backgroundColor: isDark ? SyncroColors.darkSurface : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          Icon(Icons.output_rounded,
+              color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${content.length} characters • $filename',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 10),
+            Container(
+              height: 180,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.black26
+                    : Colors.black.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  content,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogCtx).pop(),
+          child: Text(strings.cancelAction),
+        ),
+        FilledButton.tonalIcon(
+          icon: const Icon(Icons.copy_rounded, size: 16),
+          label: Text(strings.copiedToClipboard.split('!').first),
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: content));
+            if (context.mounted) {
+              Navigator.of(dialogCtx).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(strings.copiedToClipboard)),
+              );
+            }
+          },
+        ),
+        FilledButton.icon(
+          icon: const Icon(Icons.save_alt_rounded, size: 16),
+          label: const Text('Save File'),
+          onPressed: () async {
+            try {
+              final file =
+                  await backupService.saveExportToFile(content, filename);
+              if (context.mounted) {
+                Navigator.of(dialogCtx).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Saved to ${file.path}')),
+                );
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Save error: $e')),
+                );
+              }
+            }
+          },
+        ),
+      ],
+    ),
+  );
+}
+
+Future<void> _showImportDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required AppStrings strings,
+}) async {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final textController = TextEditingController();
+
+  return showDialog<void>(
+    context: context,
+    builder: (dialogCtx) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        backgroundColor: isDark ? SyncroColors.darkSurface : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.restore_page_rounded,
+                color: SyncroColors.amberSuggested),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                strings.importBackupDialogTitle,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                strings.importConfirmWarning,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: SyncroColors.amberSuggested,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: textController,
+                maxLines: 6,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                decoration: InputDecoration(
+                  hintText: '{\n  "version": 1,\n  "workSchedule": ...\n}',
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  suffixIcon: IconButton(
+                    tooltip: 'Paste from Clipboard',
+                    icon: const Icon(Icons.content_paste_rounded),
+                    onPressed: () async {
+                      final data =
+                          await Clipboard.getData(Clipboard.kTextPlain);
+                      if (data?.text != null) {
+                        setState(() {
+                          textController.text = data!.text!;
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: Text(strings.cancelAction),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: SyncroColors.coralAlert,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              final raw = textController.text.trim();
+              if (raw.isEmpty) return;
+              try {
+                final repo = ref.read(schedulingRepositoryProvider);
+                final backupService = ref.read(backupServiceProvider);
+                final summary = await backupService.importBackupJson(repo, raw);
+
+                ref.invalidate(workScheduleStreamProvider);
+                ref.invalidate(eventTypesStreamProvider);
+                ref.invalidate(entitiesStreamProvider);
+                ref.invalidate(protocolEnrollmentsStreamProvider);
+                ref.invalidate(appointmentsStreamProvider);
+                ref.invalidate(calendarConflictsProvider);
+
+                if (context.mounted) {
+                  Navigator.of(dialogCtx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '${strings.importSuccessBanner} (${summary.eventTypesCount} types, ${summary.entitiesCount} entities, ${summary.appointmentsCount} apts)',
+                      ),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('${strings.importErrorBanner} $e'),
+                      backgroundColor: SyncroColors.coralAlert,
+                    ),
+                  );
+                }
+              }
+            },
+            child: Text(strings.importJsonLabel),
+          ),
+        ],
+      ),
+    ),
+  );
 }

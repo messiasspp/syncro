@@ -7,11 +7,13 @@ import '../../data/repositories/drift_scheduling_repository.dart';
 import '../../data/repositories/scheduling_repository.dart';
 import '../../data/seed/demo_seed_service.dart';
 import '../../domain/models/appointment.dart';
+import '../../domain/models/conflict_report.dart';
 import '../../domain/models/entity.dart';
 import '../../domain/models/event_type.dart';
 import '../../domain/models/external_calendar.dart';
 import '../../domain/models/protocol_enrollment.dart';
 import '../../domain/models/work_schedule.dart';
+import '../../domain/services/backup_service.dart';
 import '../../domain/services/calendar_sync_service.dart';
 
 /// Singleton Drift SQLite database provider.
@@ -101,4 +103,17 @@ final appointmentsStreamProvider =
   await ref.watch(databaseInitializerProvider.future);
   final repo = ref.watch(schedulingRepositoryProvider);
   yield* repo.watchAllAppointments();
+});
+
+/// Provides real-time detected collisions between Syncro appointments and external calendar events.
+final calendarConflictsProvider =
+    FutureProvider<Map<String, ConflictReport>>((ref) async {
+  ref.watch(appointmentsStreamProvider);
+  final syncService = ref.watch(calendarSyncServiceProvider);
+  return syncService.detectConflicts();
+});
+
+/// Backup, restore & RFC 5545 calendar export service provider.
+final backupServiceProvider = Provider<BackupService>((ref) {
+  return const BackupService();
 });

@@ -101,6 +101,47 @@ class AppStrings {
       isPt ? 'Status atualizado para $statusName' : 'Status updated to $statusName';
   String get cancelAction => isPt ? 'Cancelar' : 'Cancel';
   String get deleteAction => isPt ? 'Excluir' : 'Delete';
+  String get resolveConflictAction =>
+      isPt ? 'Resolver Conflito de Agenda' : 'Resolve Calendar Conflict';
+  String get conflictBadgeLabel =>
+      isPt ? 'Conflito Detectado' : 'Conflict Detected';
+
+  // Option 4: Data Management & Backup
+  String get dataManagementSectionTitle =>
+      isPt ? 'Gestão de Dados e Backup' : 'Data Management & Backup';
+  String get exportJsonLabel =>
+      isPt ? 'Exportar Backup Completo (JSON)' : 'Export Full Backup (JSON)';
+  String get exportJsonSubtitle => isPt
+      ? 'Protocolos, pessoas, regras e agendamentos'
+      : 'Protocols, entities, event types & appointments';
+  String get exportIcsLabel =>
+      isPt ? 'Exportar Calendário Padrão (.ics)' : 'Export Standard Calendar (.ics)';
+  String get exportIcsSubtitle => isPt
+      ? 'Formato iCalendar (RFC 5545) compatível com Google/Apple'
+      : 'iCalendar RFC 5545 format compatible with Google/Apple';
+  String get importJsonLabel =>
+      isPt ? 'Restaurar Backup (JSON)' : 'Restore Backup (JSON)';
+  String get importJsonSubtitle => isPt
+      ? 'Restaurar base a partir de texto ou arquivo JSON'
+      : 'Restore database from JSON text or file';
+  String get copyJsonAction => isPt ? 'Copiar JSON' : 'Copy JSON';
+  String get copyIcsAction => isPt ? 'Copiar .ICS' : 'Copy .ICS';
+  String get pasteAndImportAction =>
+      isPt ? 'Colar e Restaurar' : 'Paste & Restore';
+  String get exportPreviewTitle =>
+      isPt ? 'Pré-visualização do Arquivo' : 'File Export Preview';
+  String get importBackupDialogTitle =>
+      isPt ? 'Restaurar Dados (JSON)' : 'Restore Data (JSON)';
+  String get importConfirmWarning => isPt
+      ? 'Aviso: Restaurar substituirá os dados atuais. Deseja prosseguir?'
+      : 'Warning: Restoring will overwrite existing database records. Do you wish to continue?';
+  String get importSuccessBanner =>
+      isPt ? 'Backup restaurado com sucesso!' : 'Backup restored successfully!';
+  String get importErrorBanner => isPt
+      ? 'Falha ao processar o arquivo de backup. Formato inválido.'
+      : 'Failed to parse backup payload. Invalid format.';
+  String get copiedToClipboard =>
+      isPt ? 'Copiado para a área de transferência!' : 'Copied to clipboard!';
 
   // Windowed Lazy Loading (all lists)
   String loadMoreLabel(int remaining) => isPt

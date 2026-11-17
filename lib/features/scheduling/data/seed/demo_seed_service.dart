@@ -5,7 +5,6 @@ import '../../domain/models/protocol_enrollment.dart';
 import '../../domain/models/time_range.dart';
 import '../../domain/models/work_schedule.dart';
 import '../../domain/services/protocol_cascade_service.dart';
-import '../../domain/services/slot_finder.dart';
 import '../repositories/scheduling_repository.dart';
 
 /// Service that initializes or resets the two canonical Syncro demo scenarios:
@@ -43,7 +42,7 @@ class DemoSeedService {
     await _repository.clearAllData();
 
     final anchorMonday = _normalizeToMonday(
-      referenceDate ?? DateTime(2026, 10, 19),
+      referenceDate ?? DateTime(2026, 11, 9),
     );
 
     // 1. Seed Default Work Schedule (Mon-Fri, 08:00 - 18:00)
@@ -202,31 +201,34 @@ class DemoSeedService {
     allSeededAppointments.addAll(visits102);
     cumulativeBusySlots.addAll(visits102.map((a) => a.timeRange));
 
-    // 5c. Mendy (Friends Zone): Find optimal Thursday evening slot in the first week
-    final firstWeekRange = TimeRange(
-      start: anchorMonday,
-      end: anchorMonday.add(const Duration(days: 7)),
-    );
-    final mendyCandidateSlots = SlotFinder.findCandidateSlots(
-      searchRange: firstWeekRange,
-      eventType: friendsZoneType,
-      workSchedule: workSchedule,
-      entity: mendy,
-      busySlots: cumulativeBusySlots,
-      slotStep: const Duration(minutes: 30),
+    // 5c. Mendy (Friends Zone): Scheduled on Tuesday evening at 22:00 (10:00 PM)
+    // in the current week, aligning with personal events to demonstrate real-time collision detection.
+    final mendySlot = TimeRange(
+      start: DateTime(
+        anchorMonday.year,
+        anchorMonday.month,
+        anchorMonday.day + 1,
+        22,
+        0,
+      ),
+      end: DateTime(
+        anchorMonday.year,
+        anchorMonday.month,
+        anchorMonday.day + 1,
+        23,
+        0,
+      ),
     );
 
-    if (mendyCandidateSlots.isNotEmpty) {
-      allSeededAppointments.add(
-        Appointment(
-          id: 'apt_mendy_hangout_1',
-          entityId: mendy.id,
-          eventTypeId: friendsZoneType.id,
-          timeRange: mendyCandidateSlots.first,
-          status: AppointmentStatus.suggested,
-        ),
-      );
-    }
+    allSeededAppointments.add(
+      Appointment(
+        id: 'apt_mendy_hangout_1',
+        entityId: mendy.id,
+        eventTypeId: friendsZoneType.id,
+        timeRange: mendySlot,
+        status: AppointmentStatus.suggested,
+      ),
+    );
 
     await _repository.upsertAppointmentsBatch(allSeededAppointments);
   }

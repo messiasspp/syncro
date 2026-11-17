@@ -60,8 +60,30 @@ class SyncroHomeScreen extends ConsumerStatefulWidget {
   ConsumerState<SyncroHomeScreen> createState() => _SyncroHomeScreenState();
 }
 
-class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen> {
+class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen>
+    with WidgetsBindingObserver {
   ScrollPosition? _activeVerticalScrollPosition;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Re-evaluate external calendar collisions when returning from Google Calendar or device apps
+      ref.invalidate(calendarConflictsProvider);
+      ref.invalidate(externalCalendarsFutureProvider);
+    }
+  }
 
   static const List<Widget> _screens = [
     AgendaScreen(key: ValueKey('tab_agenda')),
@@ -230,6 +252,7 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen> {
                 final result =
                     await ref.read(calendarSyncServiceProvider).syncAll();
                 ref.invalidate(externalCalendarsFutureProvider);
+                ref.invalidate(calendarConflictsProvider);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(

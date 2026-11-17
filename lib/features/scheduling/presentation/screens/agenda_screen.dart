@@ -8,11 +8,13 @@ import '../../../../core/theme/syncro_theme.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../../../core/widgets/windowed_pager.dart';
 import '../../domain/models/appointment.dart';
+import '../../domain/models/conflict_report.dart';
 import '../../domain/models/entity.dart';
 import '../../domain/models/event_type.dart';
 import '../providers/scheduling_providers.dart';
 import '../widgets/appointment_detail_sheet.dart';
 import '../widgets/confirmation_sheet.dart';
+import '../widgets/conflict_resolution_sheet.dart';
 
 enum AgendaViewMode {
   timeline,
@@ -88,6 +90,8 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
 
     final eventTypeById = {for (final et in eventTypes) et.id: et};
     final entityById = {for (final e in entities) e.id: e};
+    final conflicts =
+        ref.watch(calendarConflictsProvider).valueOrNull ?? const <String, ConflictReport>{};
 
     final filteredByType = _selectedEventTypeId == null
         ? allAppointments
@@ -178,16 +182,123 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
 
     final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight + 12;
 
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(16, topPadding, 16, 8),
-          sliver: SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 1. Bento Summary Metric Row
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(calendarConflictsProvider);
+        ref.invalidate(appointmentsStreamProvider);
+        ref.invalidate(externalCalendarsFutureProvider);
+        await ref.read(calendarConflictsProvider.future);
+      },
+      child: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(16, topPadding, 16, 8),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 0. Live External Conflict Alert Banner
+                  if (conflicts.isNotEmpty) ...[
+                    StaggeredReveal(
+                      index: 0,
+                      child: GestureDetector(
+                        onTap: () {
+                          final firstConflict = conflicts.values.first;
+                          ConflictResolutionSheet.show(
+                            context,
+                            conflict: firstConflict,
+                            entity:
+                                entityById[firstConflict.appointment.entityId],
+                            eventType: eventTypeById[
+                                firstConflict.appointment.eventTypeId],
+                            strings: strings,
+                          );
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            color:
+                                SyncroColors.coralAlert.withValues(alpha: 0.16),
+                            border: Border.all(
+                              color: SyncroColors.coralAlert
+                                  .withValues(alpha: 0.65),
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: SyncroColors.coralAlert
+                                    .withValues(alpha: 0.20),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: SyncroColors.coralAlert
+                                      .withValues(alpha: 0.22),
+                                ),
+                                child: const Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: SyncroColors.coralAlert,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      strings.isPt
+                                          ? 'Conflito de Agenda Detectado!'
+                                          : 'Calendar Conflict Detected!',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13,
+                                        color: SyncroColors.coralAlert,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      strings.isPt
+                                          ? '${conflicts.length} evento(s) colidindo: "${conflicts.values.first.conflictingEvent.title}". Toque para resolver.'
+                                          : '${conflicts.length} collision(s): "${conflicts.values.first.conflictingEvent.title}". Tap to auto-resolve.',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                        color: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.auto_fix_high_rounded,
+                                color: SyncroColors.coralAlert,
+                                size: 20,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  // 1. Bento Summary Metric Row
                 Row(
                   children: [
                     Expanded(
@@ -587,6 +698,7 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                                 entity: entityById[dayAppointments[i].entityId],
                                 eventType: eventTypeById[
                                     dayAppointments[i].eventTypeId],
+                                conflict: conflicts[dayAppointments[i].id],
                                 strings: strings,
                                 isLastInDay: i == dayAppointments.length - 1,
                                 onConfirm: () async {
@@ -618,7 +730,8 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
             ),
           ),
       ],
-    );
+    ),
+  );
   }
 }
 
@@ -865,6 +978,7 @@ class _TimelineAppointmentRow extends StatelessWidget {
   final Appointment appointment;
   final Entity? entity;
   final EventType? eventType;
+  final ConflictReport? conflict;
   final AppStrings strings;
   final bool isLastInDay;
   final VoidCallback onConfirm;
@@ -873,6 +987,7 @@ class _TimelineAppointmentRow extends StatelessWidget {
     required this.appointment,
     required this.entity,
     required this.eventType,
+    this.conflict,
     required this.strings,
     required this.isLastInDay,
     required this.onConfirm,
@@ -891,14 +1006,28 @@ class _TimelineAppointmentRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       borderRadius: 18,
-      borderColor: categoryColor.withValues(alpha: isSuggested ? 0.50 : 0.30),
-      onTap: () => AppointmentDetailSheet.show(
-        context,
-        appointment: appointment,
-        entity: entity,
-        eventType: eventType,
-        strings: strings,
-      ),
+      borderColor: conflict != null
+          ? SyncroColors.coralAlert.withValues(alpha: 0.70)
+          : categoryColor.withValues(alpha: isSuggested ? 0.50 : 0.30),
+      onTap: () {
+        if (conflict != null) {
+          ConflictResolutionSheet.show(
+            context,
+            conflict: conflict!,
+            entity: entity,
+            eventType: eventType,
+            strings: strings,
+          );
+        } else {
+          AppointmentDetailSheet.show(
+            context,
+            appointment: appointment,
+            entity: entity,
+            eventType: eventType,
+            strings: strings,
+          );
+        }
+      },
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -976,6 +1105,53 @@ class _TimelineAppointmentRow extends StatelessWidget {
                       status: appointment.status,
                       strings: strings,
                     ),
+                    if (conflict != null)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => ConflictResolutionSheet.show(
+                          context,
+                          conflict: conflict!,
+                          entity: entity,
+                          eventType: eventType,
+                          strings: strings,
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                SyncroColors.coralAlert.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: SyncroColors.coralAlert
+                                  .withValues(alpha: 0.50),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.warning_amber_rounded,
+                                size: 13,
+                                color: SyncroColors.coralAlert,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                strings.isPt
+                                    ? 'Conflito! Resolver'
+                                    : 'Collision! Resolve',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: SyncroColors.coralAlert,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     if (appointment.externalCalendarEventId != null)
                       Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1013,6 +1189,23 @@ class _TimelineAppointmentRow extends StatelessWidget {
           const SizedBox(width: 6),
           Column(
             children: [
+              if (conflict != null)
+                IconButton.filledTonal(
+                  tooltip: strings.resolveConflictAction,
+                  style: IconButton.styleFrom(
+                    backgroundColor:
+                        SyncroColors.coralAlert.withValues(alpha: 0.20),
+                    foregroundColor: SyncroColors.coralAlert,
+                  ),
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                  onPressed: () => ConflictResolutionSheet.show(
+                    context,
+                    conflict: conflict!,
+                    entity: entity,
+                    eventType: eventType,
+                    strings: strings,
+                  ),
+                ),
               if (isSuggested)
                 IconButton.filledTonal(
                   tooltip: strings.confirmAction,
