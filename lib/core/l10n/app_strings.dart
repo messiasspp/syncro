@@ -23,6 +23,25 @@ final use24HourFormatProvider = StateProvider<bool>((ref) {
   return true;
 });
 
+/// Tone presets for WhatsApp, SMS, and Email confirmation messages.
+enum MessageTone {
+  friendly,
+  clinical,
+  reminder,
+  custom,
+}
+
+/// Active default message tone selected by the user.
+final activeMessageToneProvider = StateProvider<MessageTone>((ref) {
+  return MessageTone.friendly;
+});
+
+/// Optional user-defined custom message template with `{name}`, `{category}`,
+/// `{date}`, `{time}`, and `{visit}` placeholders.
+final customMessageTemplateProvider = StateProvider<String?>((ref) {
+  return null;
+});
+
 /// Localization dictionary and date/time formatter for English and Portuguese (pt-BR).
 class AppStrings {
   final AppLanguage language;
@@ -339,11 +358,21 @@ class AppStrings {
     return '${formatTime(range.start)} – ${formatTime(range.end)}';
   }
 
+  String defaultCustomTemplate() {
+    if (isPt) {
+      return 'Olá {name}! Seu agendamento de "{category}{visit}" está confirmado para {date}, das {time}. Por favor, responda para confirmar!';
+    } else {
+      return 'Hi {name}! Your "{category}{visit}" appointment is scheduled for {date} at {time}. Please reply to confirm!';
+    }
+  }
+
   String buildConfirmationMessage({
     required String participantName,
     required String eventTypeName,
     required TimeRange timeRange,
     int? visitNumber,
+    MessageTone tone = MessageTone.friendly,
+    String? customTemplate,
   }) {
     final dateStr = formatDateHeader(timeRange.start);
     final timeStr = formatTimeRange(timeRange);
@@ -351,12 +380,43 @@ class AppStrings {
         ? (isPt ? ' (Visita #$visitNumber)' : ' (Visit #$visitNumber)')
         : '';
 
-    if (isPt) {
-      return 'Olá $participantName! Seu agendamento de "$eventTypeName$visitTag" '
-          'está marcado para $dateStr, das $timeStr. Até lá!';
-    } else {
-      return 'Hi $participantName! Your "$eventTypeName$visitTag" appointment '
-          'is scheduled for $dateStr at $timeStr. Please reply to confirm!';
+    if (tone == MessageTone.custom &&
+        customTemplate != null &&
+        customTemplate.trim().isNotEmpty) {
+      return customTemplate
+          .replaceAll('{name}', participantName)
+          .replaceAll('{category}', eventTypeName)
+          .replaceAll('{date}', dateStr)
+          .replaceAll('{time}', timeStr)
+          .replaceAll('{visit}', visitTag);
+    }
+
+    switch (tone) {
+      case MessageTone.clinical:
+        if (isPt) {
+          return 'Prezado(a) $participantName, confirmamos sua sessão clínica de '
+              '"$eventTypeName$visitTag" para $dateStr, das $timeStr. '
+              'Recomendamos chegar com 10 minutos de antecedência. Confirme o recebimento.';
+        } else {
+          return 'Dear $participantName, this is a confirmation for your clinical session '
+              '"$eventTypeName$visitTag" on $dateStr ($timeStr). '
+              'Please arrive 10 minutes early and reply to confirm attendance.';
+        }
+      case MessageTone.reminder:
+        if (isPt) {
+          return 'Lembrete Syncro: $eventTypeName$visitTag com $participantName — $dateStr ($timeStr).';
+        } else {
+          return 'Syncro Reminder: $eventTypeName$visitTag with $participantName — $dateStr ($timeStr).';
+        }
+      case MessageTone.friendly:
+      case MessageTone.custom:
+        if (isPt) {
+          return 'Olá $participantName! Seu agendamento de "$eventTypeName$visitTag" '
+              'está marcado para $dateStr, das $timeStr. Até lá!';
+        } else {
+          return 'Hi $participantName! Your "$eventTypeName$visitTag" appointment '
+              'is scheduled for $dateStr at $timeStr. Please reply to confirm!';
+        }
     }
   }
 }

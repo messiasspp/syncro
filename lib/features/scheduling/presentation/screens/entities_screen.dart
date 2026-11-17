@@ -11,6 +11,8 @@ import '../../domain/models/appointment.dart';
 import '../../domain/models/entity.dart';
 import '../../domain/models/event_type.dart';
 import '../../domain/models/protocol_enrollment.dart';
+import '../../domain/models/work_schedule.dart';
+import '../../domain/services/protocol_cascade_service.dart';
 import '../providers/scheduling_providers.dart';
 import '../widgets/confirmation_sheet.dart';
 
@@ -56,6 +58,8 @@ class _EntitiesScreenState extends ConsumerState<EntitiesScreen> {
     final eventTypesAsync = ref.watch(eventTypesStreamProvider);
     final enrollmentsAsync = ref.watch(protocolEnrollmentsStreamProvider);
     final appointmentsAsync = ref.watch(appointmentsStreamProvider);
+    final workSchedule =
+        ref.watch(workScheduleStreamProvider).valueOrNull ?? const WorkSchedule();
 
     final entities = entitiesAsync.valueOrNull ?? const <Entity>[];
     final eventTypes = eventTypesAsync.valueOrNull ?? const <EventType>[];
@@ -130,6 +134,15 @@ class _EntitiesScreenState extends ConsumerState<EntitiesScreen> {
               entityAppointments:
                   appointmentsByEntityId[entity.id] ?? const <Appointment>[],
               strings: strings,
+              onCreateCustomProtocol: () => _showCustomProtocolWizardDialog(
+                context,
+                ref,
+                entity: entity,
+                eventTypes: eventTypes,
+                workSchedule: workSchedule,
+                existingAppointments: appointments,
+                strings: strings,
+              ),
             ),
           ),
         );
@@ -251,6 +264,7 @@ class _EntityGlassCard extends StatelessWidget {
   final ProtocolEnrollment? enrollment;
   final List<Appointment> entityAppointments;
   final AppStrings strings;
+  final VoidCallback onCreateCustomProtocol;
 
   const _EntityGlassCard({
     required this.entity,
@@ -258,6 +272,7 @@ class _EntityGlassCard extends StatelessWidget {
     required this.enrollment,
     required this.entityAppointments,
     required this.strings,
+    required this.onCreateCustomProtocol,
   });
 
   @override
@@ -421,17 +436,54 @@ class _EntityGlassCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 16),
+                  label: Text(
+                    strings.isPt
+                        ? 'Novo Protocolo'
+                        : 'New Custom Protocol',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  onPressed: onCreateCustomProtocol,
+                ),
+                FilledButton.tonalIcon(
+                  icon: const Icon(Icons.grid_view_rounded, size: 17),
+                  label: Text(strings.viewProtocolRoadmap),
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  onPressed: () => _showRoadmapModal(context, color),
+                ),
+              ],
+            ),
+          ] else ...[
+            const Divider(height: 22),
             Align(
               alignment: Alignment.centerRight,
               child: FilledButton.tonalIcon(
-                icon: const Icon(Icons.grid_view_rounded, size: 17),
-                label: Text(strings.viewProtocolRoadmap),
+                icon: const Icon(Icons.add_road_rounded, size: 17),
+                label: Text(
+                  strings.isPt
+                      ? 'Criar Protocolo Personalizado'
+                      : 'Create Custom Protocol',
+                ),
                 style: FilledButton.styleFrom(
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                onPressed: () => _showRoadmapModal(context, color),
+                onPressed: onCreateCustomProtocol,
               ),
             ),
           ],
@@ -592,4 +644,278 @@ class _EntityGlassCard extends StatelessWidget {
       },
     );
   }
+}
+
+Future<void> _showCustomProtocolWizardDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required Entity entity,
+  required List<EventType> eventTypes,
+  required WorkSchedule workSchedule,
+  required List<Appointment> existingAppointments,
+  required AppStrings strings,
+}) async {
+  if (eventTypes.isEmpty) return;
+
+  final nameCtrl = TextEditingController(
+    text: '${entity.name} — ${strings.isPt ? "Protocolo Personalizado" : "Custom Protocol"}',
+  );
+  String selectedEventTypeId =
+      entity.defaultEventTypeId ?? eventTypes.first.id;
+  if (!eventTypes.any((et) => et.id == selectedEventTypeId)) {
+    selectedEventTypeId = eventTypes.first.id;
+  }
+
+  DateTime startDate = DateTime.now().add(const Duration(days: 1));
+  int totalVisits = 8;
+  int cadenceDays = 7;
+  int toleranceDays = 2;
+
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
+            title: Row(
+              children: [
+                const Icon(
+                  Icons.science_rounded,
+                  color: SyncroColors.clinicalEmerald,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    strings.isPt
+                        ? 'Criador de Protocolo Multi-Visitas'
+                        : 'Custom Protocol Wizard',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: InputDecoration(
+                      labelText: strings.isPt
+                          ? 'Nome do Protocolo'
+                          : 'Protocol Roadmap Name',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    initialValue: selectedEventTypeId,
+                    decoration: InputDecoration(
+                      labelText: strings.isPt
+                          ? 'Categoria de Evento'
+                          : 'Event Category',
+                    ),
+                    items: eventTypes
+                        .map(
+                          (et) => DropdownMenuItem(
+                            value: et.id,
+                            child: Text(et.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        setModalState(() => selectedEventTypeId = v);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Icon(Icons.calendar_today_rounded, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${strings.isPt ? "Início" : "Start"}: ${strings.formatDateHeader(startDate)}',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: ctx,
+                            initialDate: startDate,
+                            firstDate: DateTime.now(),
+                            lastDate:
+                                DateTime.now().add(const Duration(days: 365)),
+                          );
+                          if (picked != null) {
+                            setModalState(() => startDate = picked);
+                          }
+                        },
+                        child: Text(strings.isPt ? 'Alterar' : 'Change'),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 18),
+                  Text(
+                    strings.isPt
+                        ? 'Total de Visitas: $totalVisits'
+                        : 'Total Visits: $totalVisits',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final count in const [4, 6, 8, 12, 24])
+                        ChoiceChip(
+                          label: Text('$count'),
+                          selected: totalVisits == count,
+                          visualDensity: VisualDensity.compact,
+                          onSelected: (_) =>
+                              setModalState(() => totalVisits = count),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    strings.isPt
+                        ? 'Cadência (Intervalo): a cada $cadenceDays dias'
+                        : 'Cadence (Interval): Every $cadenceDays days',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final cad in const [3, 7, 14, 21, 30])
+                        ChoiceChip(
+                          label: Text('${cad}d'),
+                          selected: cadenceDays == cad,
+                          visualDensity: VisualDensity.compact,
+                          onSelected: (_) =>
+                              setModalState(() => cadenceDays = cad),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    strings.isPt
+                        ? 'Janela de Tolerância: ±$toleranceDays dia(s)'
+                        : 'Tolerance Window: ±$toleranceDays day(s)',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    children: [
+                      for (final tol in const [1, 2, 3, 5])
+                        ChoiceChip(
+                          label: Text('±${tol}d'),
+                          selected: toleranceDays == tol,
+                          visualDensity: VisualDensity.compact,
+                          onSelected: (_) =>
+                              setModalState(() => toleranceDays = tol),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text(strings.cancelAction),
+              ),
+              FilledButton.icon(
+                icon: const Icon(Icons.auto_awesome_rounded, size: 17),
+                label: Text(
+                  strings.isPt ? 'Gerar Cronograma' : 'Generate Schedule',
+                ),
+                onPressed: () async {
+                  final protocolName = nameCtrl.text.trim().isEmpty
+                      ? '${entity.name} Protocol'
+                      : nameCtrl.text.trim();
+                  final eventType = eventTypes
+                      .firstWhere((et) => et.id == selectedEventTypeId);
+
+                  final enrollmentId =
+                      'proto_${entity.id}_${DateTime.now().millisecondsSinceEpoch}';
+                  final enrollment = ProtocolEnrollment(
+                    id: enrollmentId,
+                    entityId: entity.id,
+                    eventTypeId: eventType.id,
+                    protocolName: protocolName,
+                    startDate: DateTime(
+                      startDate.year,
+                      startDate.month,
+                      startDate.day,
+                    ),
+                    totalVisits: totalVisits,
+                    cadenceDays: cadenceDays,
+                    toleranceWindowDays: toleranceDays,
+                  );
+
+                  final busySlots = existingAppointments
+                      .where((a) => a.status != AppointmentStatus.cancelled)
+                      .map((a) => a.timeRange)
+                      .toList();
+
+                  final generatedAppointments =
+                      ProtocolCascadeService.generateInitialSequence(
+                    enrollment: enrollment,
+                    eventType: eventType,
+                    workSchedule: workSchedule,
+                    entity: entity,
+                    busySlots: busySlots,
+                  );
+
+                  final repo = ref.read(schedulingRepositoryProvider);
+                  await repo.upsertProtocolEnrollment(enrollment);
+                  if (generatedAppointments.isNotEmpty) {
+                    await repo.upsertAppointmentsBatch(generatedAppointments);
+                  }
+
+                  if (ctx.mounted) {
+                    Navigator.of(ctx).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          strings.isPt
+                              ? 'Protocolo "$protocolName" criado com ${generatedAppointments.length} visitas sem colisões!'
+                              : 'Created "$protocolName" with ${generatedAppointments.length} collision-free visits!',
+                        ),
+                      ),
+                    );
+                  }
+                },
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
 }

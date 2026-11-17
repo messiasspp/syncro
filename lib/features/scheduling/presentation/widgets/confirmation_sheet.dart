@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/l10n/app_strings.dart';
@@ -22,7 +23,7 @@ Color parseHexColor(String hex,
 
 /// Frosted glassmorphic bottom sheet displaying a 1-tap WhatsApp, SMS, and Email
 /// confirmation template for a scheduled or suggested [Appointment].
-class ConfirmationSheet extends StatelessWidget {
+class ConfirmationSheet extends ConsumerWidget {
   final Appointment appointment;
   final Entity? entity;
   final EventType? eventType;
@@ -58,18 +59,22 @@ class ConfirmationSheet extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final participantName = entity?.name ?? appointment.entityId;
     final categoryName = eventType?.name ?? appointment.eventTypeId;
     final visitNum =
         appointment.visitIndex != null ? appointment.visitIndex! + 1 : null;
+    final activeTone = ref.watch(activeMessageToneProvider);
+    final customTemplate = ref.watch(customMessageTemplateProvider);
 
     final messageText = strings.buildConfirmationMessage(
       participantName: participantName,
       eventTypeName: categoryName,
       timeRange: appointment.timeRange,
       visitNumber: visitNum,
+      tone: activeTone,
+      customTemplate: customTemplate,
     );
 
     final phoneDigits =
@@ -157,7 +162,53 @@ class ConfirmationSheet extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final (tone, label, icon) in [
+                      (
+                        MessageTone.friendly,
+                        strings.isPt ? 'Casual' : 'Friendly',
+                        Icons.sentiment_satisfied_alt_rounded,
+                      ),
+                      (
+                        MessageTone.clinical,
+                        strings.isPt ? 'Clínico' : 'Clinical',
+                        Icons.medical_services_outlined,
+                      ),
+                      (
+                        MessageTone.reminder,
+                        strings.isPt ? 'Lembrete' : 'Reminder',
+                        Icons.notifications_active_outlined,
+                      ),
+                      if (customTemplate != null &&
+                          customTemplate.trim().isNotEmpty)
+                        (
+                          MessageTone.custom,
+                          strings.isPt ? 'Personalizado' : 'Custom',
+                          Icons.edit_note_rounded,
+                        ),
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          avatar: Icon(icon, size: 15),
+                          label: Text(label),
+                          selected: activeTone == tone,
+                          visualDensity: VisualDensity.compact,
+                          onSelected: (_) {
+                            HapticFeedback.selectionClick();
+                            ref.read(activeMessageToneProvider.notifier).state =
+                                tone;
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),

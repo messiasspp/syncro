@@ -515,6 +515,107 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
         ),
+        const SizedBox(height: 14),
+
+        // 6. Dynamic Message Template Customizer (WhatsApp / SMS / Email)
+        StaggeredReveal(
+          index: 5,
+          child: GlassContainer(
+            padding: const EdgeInsets.all(16),
+            borderRadius: 20,
+            child: Builder(
+              builder: (context) {
+                final activeTone = ref.watch(activeMessageToneProvider);
+                final customTemplate = ref.watch(customMessageTemplateProvider);
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            strings.isPt
+                                ? 'Templates de Mensagem (WhatsApp / SMS)'
+                                : 'Dynamic Message Templates (WhatsApp / SMS)',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        for (final (tone, label) in [
+                          (
+                            MessageTone.friendly,
+                            strings.isPt ? 'Casual' : 'Friendly',
+                          ),
+                          (
+                            MessageTone.clinical,
+                            strings.isPt ? 'Clínico' : 'Clinical',
+                          ),
+                          (
+                            MessageTone.reminder,
+                            strings.isPt ? 'Lembrete' : 'Reminder',
+                          ),
+                          (
+                            MessageTone.custom,
+                            strings.isPt ? 'Personalizado' : 'Custom',
+                          ),
+                        ])
+                          ChoiceChip(
+                            label: Text(label),
+                            selected: activeTone == tone,
+                            visualDensity: VisualDensity.compact,
+                            onSelected: (_) {
+                              HapticFeedback.selectionClick();
+                              ref
+                                  .read(activeMessageToneProvider.notifier)
+                                  .state = tone;
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _DataActionTile(
+                      icon: Icons.edit_note_rounded,
+                      title: strings.isPt
+                          ? 'Editor de Template com Variáveis'
+                          : 'Variable Template Editor',
+                      subtitle: customTemplate != null &&
+                              customTemplate.trim().isNotEmpty
+                          ? customTemplate
+                          : '{name}, {category}, {date}, {time}, {visit}',
+                      buttonLabel: strings.isPt ? 'Editar' : 'Edit',
+                      accentColor: SyncroColors.amethystViolet,
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        _showCustomTemplateDialog(
+                          context,
+                          ref,
+                          strings: strings,
+                        );
+                      },
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -937,6 +1038,119 @@ Future<void> _showImportDialog(
               }
             },
             child: Text(strings.importJsonLabel),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Future<void> _showCustomTemplateDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required AppStrings strings,
+}) async {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final current = ref.read(customMessageTemplateProvider) ??
+      strings.defaultCustomTemplate();
+  final controller = TextEditingController(text: current);
+
+  return showDialog<void>(
+    context: context,
+    builder: (dialogCtx) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        backgroundColor: isDark ? SyncroColors.darkSurface : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(
+              Icons.edit_note_rounded,
+              color: SyncroColors.amethystViolet,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                strings.isPt
+                    ? 'Template Personalizado'
+                    : 'Custom Message Template',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                strings.isPt
+                    ? 'Toque em uma variável abaixo para inserir no texto:'
+                    : 'Tap any placeholder chip below to insert it:',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final tag in const [
+                    '{name}',
+                    '{category}',
+                    '{date}',
+                    '{time}',
+                    '{visit}',
+                  ])
+                    ActionChip(
+                      label: Text(
+                        tag,
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        setState(() {
+                          controller.text = '${controller.text} $tag';
+                        });
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: Text(strings.cancelAction),
+          ),
+          FilledButton(
+            onPressed: () {
+              final text = controller.text.trim();
+              ref.read(customMessageTemplateProvider.notifier).state =
+                  text.isEmpty ? null : text;
+              ref.read(activeMessageToneProvider.notifier).state =
+                  MessageTone.custom;
+              Navigator.of(dialogCtx).pop();
+            },
+            child: Text(strings.isPt ? 'Salvar Template' : 'Save Template'),
           ),
         ],
       ),

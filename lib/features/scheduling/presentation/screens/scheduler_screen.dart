@@ -12,6 +12,7 @@ import '../../domain/models/event_type.dart';
 import '../../domain/models/protocol_enrollment.dart';
 import '../../domain/models/time_range.dart';
 import '../../domain/models/work_schedule.dart';
+import '../../domain/services/protocol_cascade_service.dart';
 import '../../domain/services/slot_finder.dart';
 import '../providers/scheduling_providers.dart';
 
@@ -28,6 +29,7 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
   String? _selectedEntityId;
   String? _selectedEnrollmentId;
   int _selectedVisitIndex = 1;
+  int _cascadeDayShiftOffset = 3; // Interactive drag shift in days (1..21)
 
   List<TimeRange> _candidateSlots = const [];
   bool _hasSearchedSlots = false;
@@ -365,6 +367,45 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
         .where((v) => v.visitIndex == _selectedVisitIndex)
         .firstOrNull;
 
+    // Live Dry-Run Cascade Calculation for Real-Time Diff Preview
+    CascadeShiftResult? dryRunPreview;
+    TimeRange? previewNewSlot;
+    if (enrollment != null &&
+        entity != null &&
+        eventType != null &&
+        targetVisit != null) {
+      final searchStart = targetVisit.timeRange.start
+          .add(Duration(days: _cascadeDayShiftOffset));
+      final searchWindow = TimeRange(
+        start: searchStart,
+        end: searchStart.add(const Duration(days: 14)),
+      );
+      final candidateSlots = SlotFinder.findCandidateSlots(
+        searchRange: searchWindow,
+        eventType: eventType,
+        workSchedule: workSchedule,
+        entity: entity,
+      );
+      if (candidateSlots.isNotEmpty) {
+        previewNewSlot = candidateSlots.first;
+        dryRunPreview = ProtocolCascadeService.recalculateCascade(
+          enrollment: enrollment,
+          currentAppointments: protocolVisits,
+          shiftedVisitIndex: _selectedVisitIndex,
+          newSlot: previewNewSlot,
+          eventType: eventType,
+          workSchedule: workSchedule,
+          entity: entity,
+        );
+      }
+    }
+
+    final previewVisitsByIndex = <int, Appointment>{
+      if (dryRunPreview != null)
+        for (final apt in dryRunPreview.updatedAppointments)
+          if (apt.visitIndex != null) apt.visitIndex!: apt,
+    };
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -444,12 +485,131 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                           .withValues(alpha: 0.30),
                     ),
                   ),
-                  child: Text(
-                    '${strings.isPt ? "Data Atual da Visita" : "Current Visit Date"} #${_selectedVisitIndex + 1}: '
-                    '${strings.formatDateHeader(targetVisit.timeRange.start)} '
-                    '(${strings.formatTimeRange(targetVisit.timeRange)})',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${strings.isPt ? "Data Atual da Visita" : "Current Visit Date"} #${_selectedVisitIndex + 1}: '
+                        '${strings.formatDateHeader(targetVisit.timeRange.start)} '
+                        '(${strings.formatTimeRange(targetVisit.timeRange)})',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      if (previewNewSlot != null) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.trending_flat_rounded,
+                              size: 16,
+                              color: SyncroColors.clinicalEmerald,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${strings.isPt ? "Nova Data (Prévia)" : "Preview Shift"} (+$_cascadeDayShiftOffset d): '
+                                '${strings.formatDateHeader(previewNewSlot.start)} '
+                                '(${strings.formatTimeRange(previewNewSlot)})',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: SyncroColors.clinicalEmerald,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
                   ),
+                ),
+                const SizedBox(height: 14),
+                // Interactive Drag-to-Reschedule Slider & Quick Shift Chips
+                Row(
+                  children: [
+                    Icon(
+                      Icons.linear_scale_rounded,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        strings.isPt
+                            ? 'Arraste para Adiar (+$_cascadeDayShiftOffset dias)'
+                            : 'Drag to Shift Visit (+$_cascadeDayShiftOffset days)',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      icon: const Icon(Icons.calendar_month_rounded, size: 15),
+                      label: Text(
+                        strings.isPt ? 'Escolher Data' : 'Pick Date',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: targetVisit.timeRange.start
+                              .add(Duration(days: _cascadeDayShiftOffset)),
+                          firstDate: targetVisit.timeRange.start
+                              .add(const Duration(days: 1)),
+                          lastDate: targetVisit.timeRange.start
+                              .add(const Duration(days: 60)),
+                        );
+                        if (picked != null) {
+                          final diff = picked
+                              .difference(DateTime(
+                                targetVisit.timeRange.start.year,
+                                targetVisit.timeRange.start.month,
+                                targetVisit.timeRange.start.day,
+                              ))
+                              .inDays
+                              .clamp(1, 30);
+                          setState(() => _cascadeDayShiftOffset = diff);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: _cascadeDayShiftOffset.toDouble().clamp(1.0, 21.0),
+                  min: 1,
+                  max: 21,
+                  divisions: 20,
+                  label: '+$_cascadeDayShiftOffset d',
+                  onChanged: (v) {
+                    final next = v.round();
+                    if (next != _cascadeDayShiftOffset) {
+                      HapticFeedback.selectionClick();
+                      setState(() => _cascadeDayShiftOffset = next);
+                    }
+                  },
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    for (final preset in const [2, 4, 7, 14])
+                      ChoiceChip(
+                        label: Text('+$preset d'),
+                        selected: _cascadeDayShiftOffset == preset,
+                        visualDensity: VisualDensity.compact,
+                        onSelected: (_) {
+                          HapticFeedback.selectionClick();
+                          setState(() => _cascadeDayShiftOffset = preset);
+                        },
+                      ),
+                  ],
                 ),
               ],
               const SizedBox(height: 14),
@@ -468,7 +628,8 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                 onPressed: enrollment == null ||
                         entity == null ||
                         eventType == null ||
-                        targetVisit == null
+                        targetVisit == null ||
+                        previewNewSlot == null
                     ? null
                     : () async {
                         HapticFeedback.heavyImpact();
@@ -479,29 +640,12 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                               v.visitIndex!: v.timeRange.start,
                         };
 
-                        final searchStart = targetVisit.timeRange.start
-                            .add(const Duration(days: 2));
-                        final searchWindow = TimeRange(
-                          start: searchStart,
-                          end: searchStart.add(const Duration(days: 10)),
-                        );
-
-                        final candidateSlots = SlotFinder.findCandidateSlots(
-                          searchRange: searchWindow,
-                          eventType: eventType,
-                          workSchedule: workSchedule,
-                          entity: entity,
-                        );
-
-                        if (candidateSlots.isEmpty) return;
-
-                        final newSlot = candidateSlots.first;
                         final result = await ref
                             .read(schedulingRepositoryProvider)
                             .rescheduleProtocolVisit(
                               protocolEnrollmentId: enrollment.id,
                               shiftedVisitIndex: _selectedVisitIndex,
-                              newSlot: newSlot,
+                              newSlot: previewNewSlot!,
                             );
 
                         setState(() {
@@ -548,8 +692,8 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
         const SizedBox(height: 16),
         Text(
           strings.isPt
-              ? 'Sequência de Visitas do Protocolo (24 Visitas)'
-              : 'Live Protocol Visit Sequence (24 Visits)',
+              ? 'Sequência de Visitas do Protocolo (${protocolVisits.length} Visitas)'
+              : 'Live Protocol Visit Sequence (${protocolVisits.length} Visits)',
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
@@ -559,13 +703,19 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
           pager: _visitsPager,
           total: protocolVisits.length,
           strings: strings,
-          itemBuilder: (i) => _CascadeVisitDiffCard(
-            visit: protocolVisits[i],
-            selectedVisitIndex: _selectedVisitIndex,
-            previousStart:
-                _previousVisitStarts[protocolVisits[i].visitIndex ?? -1],
-            strings: strings,
-          ),
+          itemBuilder: (i) {
+            final visit = protocolVisits[i];
+            final vIdx = visit.visitIndex ?? -1;
+            final committedPrev = _previousVisitStarts[vIdx];
+            final previewApt = previewVisitsByIndex[vIdx];
+            return _CascadeVisitDiffCard(
+              visit: visit,
+              previewVisit: previewApt,
+              selectedVisitIndex: _selectedVisitIndex,
+              previousStart: committedPrev,
+              strings: strings,
+            );
+          },
         ),
       ],
     );
@@ -720,12 +870,14 @@ class _CandidateSlotGlassCard extends StatelessWidget {
 
 class _CascadeVisitDiffCard extends StatelessWidget {
   final Appointment visit;
+  final Appointment? previewVisit;
   final int selectedVisitIndex;
   final DateTime? previousStart;
   final AppStrings strings;
 
   const _CascadeVisitDiffCard({
     required this.visit,
+    this.previewVisit,
     required this.selectedVisitIndex,
     required this.previousStart,
     required this.strings,
@@ -737,6 +889,17 @@ class _CascadeVisitDiffCard extends StatelessWidget {
     final isSelectedVisit = vIdx == selectedVisitIndex;
     final didShift =
         previousStart != null && previousStart != visit.timeRange.start;
+    final willPreviewShift = !didShift &&
+        previewVisit != null &&
+        previewVisit!.timeRange.start != visit.timeRange.start;
+
+    final int shiftDays = didShift
+        ? visit.timeRange.start.difference(previousStart!).inDays
+        : (willPreviewShift
+            ? previewVisit!.timeRange.start
+                .difference(visit.timeRange.start)
+                .inDays
+            : 0);
 
     return GlassContainer(
       margin: const EdgeInsets.only(bottom: 8),
@@ -744,16 +907,23 @@ class _CascadeVisitDiffCard extends StatelessWidget {
       borderRadius: 16,
       borderColor: didShift
           ? SyncroColors.clinicalEmerald.withValues(alpha: 0.50)
-          : (isSelectedVisit
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.55)
-              : null),
+          : (willPreviewShift
+              ? SyncroColors.amberSuggested.withValues(alpha: 0.45)
+              : (isSelectedVisit
+                  ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.55)
+                  : null)),
       child: Row(
         children: [
           CircleAvatar(
             radius: 15,
             backgroundColor: didShift
                 ? SyncroColors.clinicalEmerald.withValues(alpha: 0.22)
-                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.18),
+                : (willPreviewShift
+                    ? SyncroColors.amberSuggested.withValues(alpha: 0.20)
+                    : Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.18)),
             child: Text(
               '${vIdx + 1}',
               style: TextStyle(
@@ -761,7 +931,9 @@ class _CascadeVisitDiffCard extends StatelessWidget {
                 fontWeight: FontWeight.w900,
                 color: didShift
                     ? SyncroColors.clinicalEmerald
-                    : Theme.of(context).colorScheme.primary,
+                    : (willPreviewShift
+                        ? SyncroColors.amberSuggested
+                        : Theme.of(context).colorScheme.primary),
               ),
             ),
           ),
@@ -782,34 +954,64 @@ class _CascadeVisitDiffCard extends StatelessWidget {
                           ?.color
                           ?.withValues(alpha: 0.65),
                     ),
+                  )
+                else if (willPreviewShift)
+                  Text(
+                    strings.formatDateHeader(visit.timeRange.start),
+                    style: TextStyle(
+                      fontSize: 11,
+                      decoration: TextDecoration.lineThrough,
+                      color: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.color
+                          ?.withValues(alpha: 0.65),
+                    ),
                   ),
                 Text(
-                  strings.formatDateHeader(visit.timeRange.start),
+                  strings.formatDateHeader(
+                    willPreviewShift
+                        ? previewVisit!.timeRange.start
+                        : visit.timeRange.start,
+                  ),
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
-                    color: didShift ? SyncroColors.clinicalEmerald : null,
+                    color: didShift
+                        ? SyncroColors.clinicalEmerald
+                        : (willPreviewShift
+                            ? SyncroColors.amberSuggested
+                            : null),
                   ),
                 ),
                 Text(
-                  strings.formatTimeRange(visit.timeRange),
+                  strings.formatTimeRange(
+                    willPreviewShift ? previewVisit!.timeRange : visit.timeRange,
+                  ),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
           ),
-          if (didShift)
+          if (didShift || willPreviewShift)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: SyncroColors.clinicalEmerald.withValues(alpha: 0.18),
+                color: (didShift
+                        ? SyncroColors.clinicalEmerald
+                        : SyncroColors.amberSuggested)
+                    .withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text(
-                'CASCADED',
+              child: Text(
+                didShift
+                    ? 'CASCADED ${shiftDays >= 0 ? "+$shiftDays" : "$shiftDays"}d'
+                    : 'PREVIEW ${shiftDays >= 0 ? "+$shiftDays" : "$shiftDays"}d',
                 style: TextStyle(
                   fontSize: 9.5,
                   fontWeight: FontWeight.w900,
-                  color: SyncroColors.clinicalEmerald,
+                  color: didShift
+                      ? SyncroColors.clinicalEmerald
+                      : SyncroColors.amberSuggested,
                 ),
               ),
             ),

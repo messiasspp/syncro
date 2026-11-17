@@ -6,6 +6,7 @@ import '../../../../core/theme/syncro_theme.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../../../core/widgets/windowed_pager.dart';
 import '../../domain/models/event_type.dart';
+import '../../domain/models/external_calendar.dart';
 import '../providers/scheduling_providers.dart';
 import '../widgets/confirmation_sheet.dart';
 
@@ -448,45 +449,222 @@ class _EventTypeGlassCard extends ConsumerWidget {
               ),
           ],
           const Divider(height: 22),
-          Row(
-            children: [
-              Icon(
-                eventType.calendarMappingId != null
-                    ? Icons.cloud_done_rounded
-                    : Icons.cloud_queue_rounded,
-                size: 17,
-                color: eventType.calendarMappingId != null
-                    ? SyncroColors.clinicalEmerald
-                    : Colors.grey,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  eventType.calendarMappingId != null
-                      ? '${strings.subCalendarProvisioned} (${eventType.calendarMappingId})'
-                      : strings.subCalendarPending,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              TextButton.icon(
-                icon: const Icon(Icons.sync_rounded, size: 16),
-                label: Text(
-                  strings.isPt ? 'Criar/Vincular' : 'Link Calendar',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                onPressed: () async {
-                  await ref
-                      .read(calendarSyncServiceProvider)
-                      .ensureDedicatedCalendarForEventType(eventType);
-                  ref.invalidate(externalCalendarsFutureProvider);
-                },
-              ),
-            ],
+          Builder(
+            builder: (context) {
+              final calendars = ref
+                      .watch(externalCalendarsFutureProvider)
+                      .valueOrNull ??
+                  const <ExternalCalendar>[];
+              final mappedCal = calendars
+                  .where((c) => c.id == eventType.calendarMappingId)
+                  .firstOrNull;
+              final mappingSummary = eventType.calendarMappingId != null
+                  ? (mappedCal != null
+                      ? '${mappedCal.name} (${mappedCal.accountName ?? "Local"})'
+                      : '${strings.subCalendarProvisioned} (${eventType.calendarMappingId})')
+                  : strings.subCalendarPending;
+
+              return Row(
+                children: [
+                  Icon(
+                    eventType.calendarMappingId != null
+                        ? Icons.cloud_done_rounded
+                        : Icons.cloud_queue_rounded,
+                    size: 17,
+                    color: eventType.calendarMappingId != null
+                        ? SyncroColors.clinicalEmerald
+                        : Colors.grey,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      mappingSummary,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontWeight: eventType.calendarMappingId != null
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.alt_route_rounded, size: 16),
+                    label: Text(
+                      strings.isPt ? 'Rotear Conta' : 'Route Account',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    onPressed: () => _showCalendarRoutingDialog(
+                      context,
+                      ref,
+                      eventType: eventType,
+                      calendars: calendars,
+                      strings: strings,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
     );
   }
+}
+
+Future<void> _showCalendarRoutingDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required EventType eventType,
+  required List<ExternalCalendar> calendars,
+  required AppStrings strings,
+}) async {
+  final writableCalendars = calendars.where((c) => !c.isReadOnly).toList();
+
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) {
+      return AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: Row(
+          children: [
+            const Icon(
+              Icons.alt_route_rounded,
+              color: SyncroColors.electricIndigo,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                strings.isPt
+                    ? 'Roteamento de Calendário • ${eventType.name}'
+                    : 'Calendar Account Routing • ${eventType.name}',
+                style: const TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  strings.isPt
+                      ? 'Escolha para qual conta/calendário do dispositivo os agendamentos desta categoria devem ser enviados:'
+                      : 'Select which device calendar account appointments in this category should sync to:',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                // Option 1: Auto-provision dedicated sub-calendar
+                ListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  tileColor: SyncroColors.clinicalEmerald.withValues(alpha: 0.10),
+                  leading: const Icon(
+                    Icons.create_new_folder_rounded,
+                    color: SyncroColors.clinicalEmerald,
+                  ),
+                  title: Text(
+                    strings.isPt
+                        ? 'Sub-Calendário Dedicado (Syncro — ${eventType.name})'
+                        : 'Dedicated Sub-Calendar (Syncro — ${eventType.name})',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  subtitle: Text(
+                    strings.isPt
+                        ? 'Cria/vincula automaticamente um sub-calendário isolado'
+                        : 'Automatically provisions an isolated category sub-calendar',
+                    style: const TextStyle(fontSize: 11.5),
+                  ),
+                  onTap: () async {
+                    await ref
+                        .read(calendarSyncServiceProvider)
+                        .ensureDedicatedCalendarForEventType(eventType);
+                    ref.invalidate(externalCalendarsFutureProvider);
+                    if (ctx.mounted) Navigator.of(ctx).pop();
+                  },
+                ),
+                const Divider(height: 20),
+                Text(
+                  strings.isPt
+                      ? 'Contas Conectadas no Dispositivo (${writableCalendars.length})'
+                      : 'Connected Device Accounts (${writableCalendars.length})',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                for (final cal in writableCalendars)
+                  ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    leading: Icon(
+                      cal.id == eventType.calendarMappingId
+                          ? Icons.radio_button_checked_rounded
+                          : Icons.radio_button_off_rounded,
+                      color: cal.id == eventType.calendarMappingId
+                          ? SyncroColors.clinicalEmerald
+                          : Colors.grey,
+                      size: 20,
+                    ),
+                    title: Text(
+                      cal.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${cal.accountName ?? "Local"} • ID: ${cal.id}',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    onTap: () async {
+                      final updated =
+                          eventType.copyWith(calendarMappingId: cal.id);
+                      await ref
+                          .read(schedulingRepositoryProvider)
+                          .upsertEventType(updated);
+                      ref.invalidate(externalCalendarsFutureProvider);
+                      if (ctx.mounted) {
+                        Navigator.of(ctx).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              strings.isPt
+                                  ? '"${eventType.name}" roteado para ${cal.name}!'
+                                  : 'Routed "${eventType.name}" to ${cal.name}!',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(strings.cancelAction),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 /// Visual 24-hour bar showing where a [DayTimeWindow] sits within the day.
