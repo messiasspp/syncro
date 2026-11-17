@@ -248,6 +248,18 @@ class AppStrings {
       isPt ? 'Sincronizar Agora' : 'Sync All Confirmed Appointments';
   String get resetDemoButton =>
       isPt ? 'Restaurar Dados de Demonstração' : 'Reset Pre-seeded Demo Data';
+  String get startFreshButton => isPt
+      ? 'Começar do Zero (Sem Dados Demo)'
+      : 'Start Fresh (Clear All Demo Data)';
+  String get startFreshConfirmTitle => isPt
+      ? 'Limpar Tudo e Começar do Zero?'
+      : 'Clear All & Start Fresh?';
+  String get startFreshConfirmMessage => isPt
+      ? 'Isso apagará todos os agendamentos, protocolos, pessoas e categorias de demonstração para você usar o app apenas com seus dados reais.'
+      : 'This will remove all demo appointments, protocols, entities, and categories so you can use Syncro with your own real data.';
+  String get startFreshSuccess => isPt
+      ? 'Base limpa! Modo de uso real ativado (sem dados demo).'
+      : 'Database cleared! Clean-slate mode active (zero demo data).';
   String get swipeToConfirmHint =>
       isPt ? 'Deslize para confirmar →' : 'Swipe right to confirm →';
   String get allDatesLabel => isPt ? 'Todas as Datas' : 'All Dates';

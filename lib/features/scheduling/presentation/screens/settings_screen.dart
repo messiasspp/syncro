@@ -403,6 +403,11 @@ class SettingsScreen extends ConsumerWidget {
                     onPressed: () async {
                       HapticFeedback.mediumImpact();
                       await ref.read(demoSeedServiceProvider).resetAndSeed();
+                      ref.invalidate(eventTypesStreamProvider);
+                      ref.invalidate(entitiesStreamProvider);
+                      ref.invalidate(protocolEnrollmentsStreamProvider);
+                      ref.invalidate(appointmentsStreamProvider);
+                      ref.invalidate(calendarConflictsProvider);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text(strings.demoResetSuccess)),
@@ -411,6 +416,89 @@ class SettingsScreen extends ConsumerWidget {
                     },
                     icon: const Icon(Icons.restore_rounded),
                     label: Text(strings.resetDemoButton),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: SyncroColors.coralAlert,
+                      side: BorderSide(
+                        color: SyncroColors.coralAlert.withValues(alpha: 0.55),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: () async {
+                      HapticFeedback.heavyImpact();
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          title: Row(
+                            children: [
+                              const Icon(
+                                Icons.cleaning_services_rounded,
+                                color: SyncroColors.coralAlert,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  strings.startFreshConfirmTitle,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          content: Text(strings.startFreshConfirmMessage),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(false),
+                              child: Text(strings.cancelAction),
+                            ),
+                            FilledButton(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: SyncroColors.coralAlert,
+                                foregroundColor: Colors.white,
+                              ),
+                              onPressed: () => Navigator.of(ctx).pop(true),
+                              child: Text(
+                                strings.isPt
+                                    ? 'Sim, Limpar Tudo'
+                                    : 'Yes, Clear All',
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true) return;
+                      await ref
+                          .read(demoSeedServiceProvider)
+                          .clearToCleanSlate();
+                      ref.invalidate(eventTypesStreamProvider);
+                      ref.invalidate(entitiesStreamProvider);
+                      ref.invalidate(protocolEnrollmentsStreamProvider);
+                      ref.invalidate(appointmentsStreamProvider);
+                      ref.invalidate(calendarConflictsProvider);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(strings.startFreshSuccess)),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.cleaning_services_rounded),
+                    label: Text(
+                      strings.startFreshButton,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
                   ),
                 ),
               ],

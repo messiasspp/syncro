@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:syncro/core/l10n/app_strings.dart';
 import 'package:syncro/features/scheduling/data/calendar/calendar_client.dart';
 import 'package:syncro/features/scheduling/data/repositories/scheduling_repository.dart';
+import 'package:syncro/features/scheduling/data/seed/demo_seed_service.dart';
 import 'package:syncro/features/scheduling/domain/models/appointment.dart';
 import 'package:syncro/features/scheduling/domain/models/entity.dart';
 import 'package:syncro/features/scheduling/domain/models/event_type.dart';
@@ -182,6 +183,26 @@ void main() {
       );
       expect(customMsg, contains('Hello Alex Morgan -> Physical Therapy (Visit #3)'));
       expect(customMsg, contains('10:00 – 10:45'));
+    });
+
+    test('Clean Slate / Production Mode clears demo data and prevents cold-boot re-seeding', () async {
+      final seeder = DemoSeedService(repo);
+
+      await seeder.clearToCleanSlate();
+      expect(await seeder.isCleanSlateEnabled(), isTrue);
+      expect(await repo.getAllEventTypes(), isEmpty);
+      expect(await repo.getAllEntities(), isEmpty);
+      expect(await repo.getAllAppointments(), isEmpty);
+
+      // Cold-boot seedIfEmpty should NOT re-seed while Clean Slate is active
+      final didSeed = await seeder.seedIfEmpty();
+      expect(didSeed, isFalse);
+      expect(await repo.getAllAppointments(), isEmpty);
+
+      // Explicit resetAndSeed restores demo data and clears the clean-slate lock
+      await seeder.resetAndSeed();
+      expect(await seeder.isCleanSlateEnabled(), isFalse);
+      expect(await repo.getAllAppointments(), isNotEmpty);
     });
   });
 }

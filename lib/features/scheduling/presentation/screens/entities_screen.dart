@@ -231,11 +231,30 @@ Future<void> _showCreateEntityDialog(
               FilledButton(
                 onPressed: () async {
                   final name = nameCtrl.text.trim();
-                  if (name.isEmpty || selectedEventTypeId == null) return;
+                  if (name.isEmpty) return;
+                  final repo = ref.read(schedulingRepositoryProvider);
+                  String targetTypeId;
+                  if (selectedEventTypeId != null) {
+                    targetTypeId = selectedEventTypeId!;
+                  } else {
+                    targetTypeId = 'et_default_general';
+                    await repo.upsertEventType(
+                      EventType(
+                        id: targetTypeId,
+                        name: strings.isPt
+                            ? 'Geral / Pessoal'
+                            : 'General / Personal',
+                        colorHex: '#6366F1',
+                        workHoursConstraint: WorkHoursConstraint.bothFlexible,
+                        minDuration: const Duration(minutes: 45),
+                        maxDuration: const Duration(minutes: 60),
+                      ),
+                    );
+                  }
                   final entity = Entity(
                     id: 'entity_${DateTime.now().millisecondsSinceEpoch}',
                     name: name,
-                    defaultEventTypeId: selectedEventTypeId!,
+                    defaultEventTypeId: targetTypeId,
                     phone: phoneCtrl.text.trim().isEmpty
                         ? null
                         : phoneCtrl.text.trim(),
@@ -243,9 +262,7 @@ Future<void> _showCreateEntityDialog(
                         ? null
                         : emailCtrl.text.trim(),
                   );
-                  await ref
-                      .read(schedulingRepositoryProvider)
-                      .upsertEntity(entity);
+                  await repo.upsertEntity(entity);
                   if (ctx.mounted) Navigator.of(ctx).pop();
                 },
                 child: Text(strings.isPt ? 'Salvar' : 'Save'),

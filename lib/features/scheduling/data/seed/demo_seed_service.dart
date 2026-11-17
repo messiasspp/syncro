@@ -1,3 +1,7 @@
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
+
 import '../../domain/models/appointment.dart';
 import '../../domain/models/entity.dart';
 import '../../domain/models/event_type.dart';
@@ -22,12 +26,62 @@ class DemoSeedService {
   static const String patient101EnrollmentId = 'enrollment_patient_101';
   static const String patient102EnrollmentId = 'enrollment_patient_102';
 
+  static const String _cleanSlateFlagFilename = 'syncro_clean_slate.flag';
+  static bool _inMemoryCleanSlateFlag = false;
+
   final SchedulingRepository _repository;
 
   const DemoSeedService(this._repository);
 
-  /// Seeds the database only if no EventTypes exist yet (idempotent first-boot initialization).
+  static bool get _useNativeFileFlag =>
+      Platform.isAndroid || Platform.isIOS;
+
+  /// Returns true if the user explicitly opted into Clean Slate / Production Mode
+  /// (so cold restarts will not re-inject mock/demo data).
+  Future<bool> isCleanSlateEnabled() async {
+    if (_inMemoryCleanSlateFlag) return true;
+    if (!_useNativeFileFlag) return _inMemoryCleanSlateFlag;
+    try {
+      final dir = await getApplicationDocumentsDirectory()
+          .timeout(const Duration(milliseconds: 300));
+      final file = File('${dir.path}/$_cleanSlateFlagFilename');
+      return file.existsSync();
+    } catch (_) {
+      return _inMemoryCleanSlateFlag;
+    }
+  }
+
+  Future<void> _setCleanSlateFlag(bool enabled) async {
+    _inMemoryCleanSlateFlag = enabled;
+    if (!_useNativeFileFlag) return;
+    try {
+      final dir = await getApplicationDocumentsDirectory()
+          .timeout(const Duration(milliseconds: 300));
+      final file = File('${dir.path}/$_cleanSlateFlagFilename');
+      if (enabled) {
+        await file.writeAsString('clean_slate=true');
+      } else if (file.existsSync()) {
+        await file.delete();
+      }
+    } catch (_) {
+      // Fallback to in-memory flag in pure-Dart unit test environments
+    }
+  }
+
+  /// Wipes all demo/mock data and activates Clean Slate / Production Mode
+  /// so future cold boots start with the user's real data only.
+  Future<void> clearToCleanSlate() async {
+    await _setCleanSlateFlag(true);
+    await _repository.clearAllData();
+    await _repository.saveWorkSchedule(const WorkSchedule());
+  }
+
+  /// Seeds the database only if no EventTypes exist yet AND the user has not
+  /// switched to Clean Slate / Production Mode.
   Future<bool> seedIfEmpty({DateTime? referenceDate}) async {
+    if (await isCleanSlateEnabled()) {
+      return false;
+    }
     final existingTypes = await _repository.getAllEventTypes();
     if (existingTypes.isNotEmpty) {
       return false;
@@ -39,6 +93,7 @@ class DemoSeedService {
   /// Clears all existing scheduling data and populates a fresh, collision-free set
   /// of demo scenarios anchored at [referenceDate] (defaults to next Monday).
   Future<void> resetAndSeed({DateTime? referenceDate}) async {
+    await _setCleanSlateFlag(false);
     await _repository.clearAllData();
 
     final anchorMonday = _normalizeToMonday(
