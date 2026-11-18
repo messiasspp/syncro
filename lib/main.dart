@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/l10n/app_strings.dart';
+import 'core/services/local_notification_service.dart';
 import 'core/theme/syncro_theme.dart';
 import 'core/widgets/glass_container.dart';
 import 'core/widgets/windowed_pager.dart';
@@ -74,6 +75,8 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen>
     if (Platform.isAndroid || Platform.isIOS) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
+        await LocalNotificationService.instance.requestPermission();
+        if (!mounted) return;
         final cloudSvc = ref.read(googleCloudCalendarServiceProvider);
         final restored = await cloudSvc.tryRestoreSilentSignIn();
         if (restored && mounted) {
@@ -89,6 +92,19 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen>
         ref.invalidate(externalCalendarsFutureProvider);
         ref.invalidate(externalCalendarEventsProvider);
         ref.invalidate(calendarConflictsProvider);
+        if (!mounted) return;
+        try {
+          final conflicts = await ref.read(calendarConflictsProvider.future);
+          if (conflicts.isNotEmpty && mounted) {
+            final first = conflicts.values.first;
+            await LocalNotificationService.instance.showNotification(
+              id: 201,
+              title: 'Syncro Calendar Conflict',
+              body:
+                  '${conflicts.length} collision(s) detected: "${first.conflictingEvent.title}". Tap to resolve.',
+            );
+          }
+        } catch (_) {}
         if (!mounted) return;
         CalendarConnectSheet.show(context);
       });

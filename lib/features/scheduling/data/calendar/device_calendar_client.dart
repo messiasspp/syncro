@@ -304,17 +304,61 @@ class NativeDeviceCalendarClient implements CalendarClient {
 
     try {
       final location = tz.local;
+      final expectedAptId =
+          GoogleCloudCalendarService.extractSyncroAppointmentId(
+        event.description,
+      );
+      final expectedParticipant =
+          GoogleCloudCalendarService.extractParticipantLine(event.description);
+      final expectedSuffix =
+          GoogleCloudCalendarService.extractTitleSuffix(event.title);
+
       String? targetEventId = event.externalEventId;
-      if (targetEventId != null) {
-        final existingInCal = await _plugin.retrieveEvents(
-          event.calendarId,
-          RetrieveEventsParams(eventIds: [targetEventId]),
+      final windowEventsRes = await _plugin.retrieveEvents(
+        event.calendarId,
+        RetrieveEventsParams(
+          startDate: event.timeRange.start.subtract(const Duration(minutes: 5)),
+          endDate: event.timeRange.end.add(const Duration(minutes: 5)),
+        ),
+      );
+      final windowEvents = windowEventsRes.data ?? const <Event>[];
+      final hasExactTarget = targetEventId != null &&
+          windowEvents.any((e) => e.eventId == targetEventId);
+
+      final List<Event> slotMatches = [];
+      for (final e in windowEvents) {
+        if (e.eventId == null) continue;
+        final isSyncroDesc = e.description != null &&
+            e.description!.contains('Scheduled via Syncro Smart Engine');
+        final candAptId =
+            GoogleCloudCalendarService.extractSyncroAppointmentId(
+          e.description,
         );
-        final found = (existingInCal.data ?? const <Event>[])
-            .any((e) => e.eventId == targetEventId);
-        if (!found) {
-          targetEventId = null;
+        final sameAptId = expectedAptId != null && candAptId == expectedAptId;
+        final sameParticipant = isSyncroDesc &&
+            expectedParticipant != null &&
+            GoogleCloudCalendarService.extractParticipantLine(e.description) ==
+                expectedParticipant;
+        final sameSuffix = isSyncroDesc &&
+            expectedSuffix != null &&
+            GoogleCloudCalendarService.extractTitleSuffix(e.title) ==
+                expectedSuffix;
+        final eStart = e.start;
+        final withinMinute = eStart != null &&
+            DateTime.fromMillisecondsSinceEpoch(eStart.millisecondsSinceEpoch)
+                    .difference(event.timeRange.start)
+                    .abs() <=
+                const Duration(minutes: 1);
+        if (e.eventId == targetEventId ||
+            sameAptId ||
+            ((sameParticipant || sameSuffix) && withinMinute)) {
+          slotMatches.add(e);
         }
+      }
+
+      if (!hasExactTarget) {
+        targetEventId =
+            slotMatches.isNotEmpty ? slotMatches.first.eventId : null;
       }
 
       final deviceEvent = Event(
@@ -335,7 +379,16 @@ class NativeDeviceCalendarClient implements CalendarClient {
           'Failed to write event "${event.title}" to calendar ${event.calendarId}.',
         );
       }
-      return result.data!;
+      final savedId = result.data!;
+      for (final dup in slotMatches) {
+        final dupId = dup.eventId;
+        if (dupId != null && dupId != savedId) {
+          try {
+            await _plugin.deleteEvent(event.calendarId, dupId);
+          } catch (_) {}
+        }
+      }
+      return savedId;
     } on MissingPluginException {
       return _fallbackClient.createOrUpdateEvent(event);
     }

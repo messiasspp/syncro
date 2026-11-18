@@ -3,14 +3,21 @@ package com.example.syncro
 import android.Manifest
 import android.accounts.Account
 import android.accounts.AccountManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ContentResolver
 import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.CalendarContract
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -30,6 +37,29 @@ class MainActivity : FlutterActivity() {
                     "requestCalendarSync" -> {
                         val email = call.argument<String>("email")
                         requestNativeCalendarSync(email)
+                        result.success(true)
+                    }
+                    "requestNotificationPermission" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            if (ContextCompat.checkSelfPermission(
+                                    this,
+                                    Manifest.permission.POST_NOTIFICATIONS
+                                ) != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                ActivityCompat.requestPermissions(
+                                    this,
+                                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                                    1002
+                                )
+                            }
+                        }
+                        result.success(true)
+                    }
+                    "showLocalNotification" -> {
+                        val id = call.argument<Int>("id") ?: 101
+                        val title = call.argument<String>("title") ?: "Syncro Alert"
+                        val body = call.argument<String>("body") ?: ""
+                        showNativeNotification(id, title, body)
                         result.success(true)
                     }
                     "acquireAccountToken" -> {
@@ -150,6 +180,40 @@ class MainActivity : FlutterActivity() {
         Handler(Looper.getMainLooper()).postDelayed({
             enableVisibilityAndSyncForGoogleCalendars()
         }, 2500L)
+    }
+
+    private fun showNativeNotification(id: Int, title: String, body: String) {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "syncro_smart_alerts"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Syncro Smart Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Reminders and calendar conflict alerts"
+            }
+            manager.createNotificationChannel(channel)
+        }
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            id,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+        manager.notify(id, notification)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

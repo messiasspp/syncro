@@ -241,6 +241,15 @@ class CalendarSyncService {
     final didCalendarChange =
         previousMappingId != null && previousMappingId != targetCalendarId;
 
+    if (didCalendarChange && appointment.externalCalendarEventId != null) {
+      try {
+        await _calendarClient.deleteEvent(
+          calendarId: previousMappingId,
+          externalEventId: appointment.externalCalendarEventId!,
+        );
+      } catch (_) {}
+    }
+
     final visitSuffix = appointment.visitIndex != null
         ? ' (Visit #${appointment.visitIndex! + 1})'
         : '';
@@ -249,7 +258,8 @@ class CalendarSyncService {
     final descriptionBuffer = StringBuffer()
       ..writeln('Scheduled via Syncro Smart Engine')
       ..writeln('Category: ${eventType.name} (${eventType.effectiveCode})')
-      ..writeln('Participant: $participantName');
+      ..writeln('Participant: $participantName')
+      ..writeln('SyncroAppointmentId: ${appointment.id}');
     if (entity?.phone != null) {
       descriptionBuffer.writeln('Phone: ${entity!.phone}');
     }
@@ -480,7 +490,10 @@ class CalendarSyncService {
       }
     }
 
-    // 3. Count external busy events in the window
+    // 3. Sweep duplicate, wrong-calendar, or old-code Syncro events
+    await sweepDuplicateAndStaleSyncroEvents();
+
+    // 4. Count external busy events in the window
     if (syncWindow != null) {
       final mergedBusy = await fetchMergedBusySlots(syncWindow);
       externalBusyCount = mergedBusy.length;
@@ -493,6 +506,161 @@ class CalendarSyncService {
       externalBusyEventsCount: externalBusyCount,
       errors: errors,
     );
+  }
+
+  /// Scans all writable calendars for Syncro-created events (`Scheduled via Syncro Smart Engine`)
+  /// and deletes orphaned events, copies left in old calendars, outdated Group-code titles
+  /// (e.g. `MCS` when Group code changed to `MCSX`), or duplicate copies.
+  Future<int> sweepDuplicateAndStaleSyncroEvents() async {
+    final hasPerms = await _calendarClient.hasPermissions();
+    if (!hasPerms) return 0;
+
+    final calendars = await _calendarClient.retrieveCalendars();
+    final eventTypes = await _repository.getAllEventTypes();
+    final entities = await _repository.getAllEntities();
+    final appointments = await _repository.getAllAppointments();
+
+    final eventTypeById = {for (final et in eventTypes) et.id: et};
+    final entityById = {for (final e in entities) e.id: e};
+    final calNameById = {
+      for (final c in calendars) c.id: c.name.trim().toLowerCase(),
+    };
+
+    final activeAppointments = appointments
+        .where((a) => a.status != AppointmentStatus.cancelled)
+        .toList();
+
+    final now = DateTime.now();
+    final sweepRange = TimeRange(
+      start: DateTime(now.year - 1, 1, 1),
+      end: DateTime(now.year + 2, 12, 31),
+    );
+
+    final Set<String> keptAppointmentIds = {};
+    int deletedCount = 0;
+
+    String buildExpectedTitle(Appointment apt, EventType et) {
+      final participantName = entityById[apt.entityId]?.name ?? apt.entityId;
+      final visitSuffix =
+          apt.visitIndex != null ? ' (Visit #${apt.visitIndex! + 1})' : '';
+      return '${et.effectiveCode} - $participantName$visitSuffix';
+    }
+
+    Appointment? matchAppointment(ExternalCalendarEvent evt) {
+      final extId = evt.externalEventId;
+      if (extId != null) {
+        final byExtId = activeAppointments
+            .where((a) => a.externalCalendarEventId == extId)
+            .firstOrNull;
+        if (byExtId != null) return byExtId;
+      }
+
+      final embeddedAptId =
+          GoogleCloudCalendarService.extractSyncroAppointmentId(evt.description);
+      if (embeddedAptId != null) {
+        final byEmbedded =
+            activeAppointments.where((a) => a.id == embeddedAptId).firstOrNull;
+        if (byEmbedded != null) return byEmbedded;
+      }
+
+      final evtParticipant =
+          GoogleCloudCalendarService.extractParticipantLine(evt.description);
+      final evtSuffix =
+          GoogleCloudCalendarService.extractTitleSuffix(evt.title);
+
+      for (final apt in activeAppointments) {
+        if (evt.timeRange.start.difference(apt.timeRange.start).abs() >
+            const Duration(minutes: 1)) {
+          continue;
+        }
+        final participantName =
+            entityById[apt.entityId]?.name ?? apt.entityId;
+        final visitSuffix =
+            apt.visitIndex != null ? ' (Visit #${apt.visitIndex! + 1})' : '';
+        final expectedSuffix = '$participantName$visitSuffix';
+
+        if (evtParticipant == participantName || evtSuffix == expectedSuffix) {
+          return apt;
+        }
+      }
+      return null;
+    }
+
+    for (final cal in calendars) {
+      if (cal.isReadOnly) continue;
+      List<ExternalCalendarEvent> events;
+      try {
+        events = await _calendarClient.retrieveEvents(
+          calendarId: cal.id,
+          range: sweepRange,
+        );
+      } catch (_) {
+        continue;
+      }
+
+      // Prioritize keeping events that already match an active Appointment's latest
+      // externalCalendarEventId and exact title so duplicates are always removed cleanly.
+      final activeExtIds = {
+        for (final a in activeAppointments)
+          if (a.externalCalendarEventId != null) a.externalCalendarEventId!,
+      };
+      events.sort((a, b) {
+        final aPrimary = activeExtIds.contains(a.externalEventId) ? 0 : 1;
+        final bPrimary = activeExtIds.contains(b.externalEventId) ? 0 : 1;
+        return aPrimary.compareTo(bPrimary);
+      });
+
+      for (final evt in events) {
+        final extId = evt.externalEventId;
+        if (extId == null) continue;
+        if (evt.description == null ||
+            !evt.description!.contains('Scheduled via Syncro Smart Engine')) {
+          continue;
+        }
+
+        final matchedApt = matchAppointment(evt);
+        bool shouldDelete = matchedApt == null;
+
+        if (matchedApt != null) {
+          final et = eventTypeById[matchedApt.eventTypeId];
+          if (et == null) {
+            shouldDelete = true;
+          } else {
+            final expectedCalId = et.calendarMappingId;
+            final expectedCalName =
+                expectedCalId != null ? calNameById[expectedCalId] : null;
+            final inRightCalendar = (cal.id == expectedCalId) ||
+                (expectedCalName != null &&
+                    cal.name.trim().toLowerCase() == expectedCalName);
+            final expectedTitle = buildExpectedTitle(matchedApt, et);
+            final hasCurrentTitle = evt.title == expectedTitle;
+
+            if (!inRightCalendar ||
+                !hasCurrentTitle ||
+                keptAppointmentIds.contains(matchedApt.id)) {
+              shouldDelete = true;
+            } else {
+              keptAppointmentIds.add(matchedApt.id);
+            }
+          }
+        }
+
+        if (shouldDelete) {
+          try {
+            final ok = await _calendarClient.deleteEvent(
+              calendarId: cal.id,
+              externalEventId: extId,
+            );
+            if (ok) deletedCount++;
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (deletedCount > 0) {
+      await _cloudService?.triggerNativeAndroidSync();
+    }
+    return deletedCount;
   }
 
   /// Audits all device calendars to find orphaned local Syncro calendars,

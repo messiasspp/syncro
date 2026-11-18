@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/l10n/app_strings.dart';
 import '../../../../core/theme/syncro_theme.dart';
@@ -1134,6 +1135,106 @@ class _DateRibbonChip extends StatelessWidget {
   }
 }
 
+Future<void> _showExternalCalendarEventModal(
+  BuildContext context, {
+  required Appointment appointment,
+  required String calendarName,
+  required AppStrings strings,
+}) async {
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      title: Row(
+        children: [
+          const Icon(
+            Icons.event_note_rounded,
+            color: SyncroColors.electricIndigo,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              strings.isPt
+                  ? 'Evento do Google Calendar'
+                  : 'Google Calendar Event',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            appointment.entityId,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '$calendarName • ${strings.formatDateHeader(appointment.timeRange.start)}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Text(
+            strings.formatTimeRange(appointment.timeRange),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            strings.isPt
+                ? 'Este evento pertence a um calendário externo. Deseja abrir o Google Calendar para visualizar ou editar?'
+                : 'This event belongs to an external calendar. Would you like to open Google Calendar to view or edit it?',
+            style: const TextStyle(fontSize: 13),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(strings.cancelAction),
+        ),
+        FilledButton.icon(
+          icon: const Icon(Icons.open_in_new_rounded, size: 17),
+          label: Text(
+            strings.isPt
+                ? 'Abrir no Google Calendar'
+                : 'Open in Google Calendar',
+          ),
+          onPressed: () async {
+            Navigator.of(ctx).pop();
+            final startMs = appointment.timeRange.start.millisecondsSinceEpoch;
+            final androidUri =
+                Uri.parse('content://com.android.calendar/time/$startMs');
+            final s = appointment.timeRange.start;
+            final webUri = Uri.parse(
+              'https://calendar.google.com/calendar/r/day/${s.year}/${s.month}/${s.day}',
+            );
+            try {
+              final launched = await launchUrl(
+                androidUri,
+                mode: LaunchMode.externalApplication,
+              );
+              if (!launched) {
+                await launchUrl(webUri, mode: LaunchMode.externalApplication);
+              }
+            } catch (_) {
+              await launchUrl(webUri, mode: LaunchMode.externalApplication);
+            }
+          },
+        ),
+      ],
+    ),
+  );
+}
+
 class _TimelineAppointmentRow extends StatelessWidget {
   final Appointment appointment;
   final Entity? entity;
@@ -1156,6 +1257,7 @@ class _TimelineAppointmentRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final categoryColor = parseHexColor(eventType?.colorHex ?? '#6366F1');
+    final isExternal = appointment.id.startsWith('ext_');
     final isSuggested = appointment.status == AppointmentStatus.suggested;
     final participantName = entity?.name ?? appointment.entityId;
     final categoryName = eventType?.name ?? appointment.eventTypeId;
@@ -1170,6 +1272,15 @@ class _TimelineAppointmentRow extends StatelessWidget {
           ? SyncroColors.coralAlert.withValues(alpha: 0.70)
           : categoryColor.withValues(alpha: isSuggested ? 0.50 : 0.30),
       onTap: () {
+        if (isExternal) {
+          _showExternalCalendarEventModal(
+            context,
+            appointment: appointment,
+            calendarName: categoryName,
+            strings: strings,
+          );
+          return;
+        }
         if (conflict != null) {
           ConflictResolutionSheet.show(
             context,
@@ -1398,113 +1509,135 @@ class _TimelineAppointmentRow extends StatelessWidget {
                   icon: const Icon(Icons.check_rounded, size: 18),
                   onPressed: onConfirm,
                 ),
-              IconButton(
-                tooltip: strings.editAppointmentAction,
-                icon: const Icon(Icons.edit_calendar_rounded, size: 18),
-                onPressed: () => AppointmentDetailSheet.show(
-                  context,
-                  appointment: appointment,
-                  entity: entity,
-                  eventType: eventType,
-                  strings: strings,
+              if (isExternal)
+                IconButton(
+                  tooltip: strings.isPt
+                      ? 'Abrir no Google Calendar'
+                      : 'Open in Google Calendar',
+                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                  onPressed: () => _showExternalCalendarEventModal(
+                    context,
+                    appointment: appointment,
+                    calendarName: categoryName,
+                    strings: strings,
+                  ),
+                )
+              else ...[
+                IconButton(
+                  tooltip: strings.editAppointmentAction,
+                  icon: const Icon(Icons.edit_calendar_rounded, size: 18),
+                  onPressed: () => AppointmentDetailSheet.show(
+                    context,
+                    appointment: appointment,
+                    entity: entity,
+                    eventType: eventType,
+                    strings: strings,
+                  ),
                 ),
-              ),
-              IconButton(
-                tooltip: strings.shareAction,
-                icon: const Icon(Icons.share_outlined, size: 18),
-                onPressed: () => ConfirmationSheet.show(
-                  context,
-                  appointment: appointment,
-                  entity: entity,
-                  eventType: eventType,
-                  strings: strings,
+                IconButton(
+                  tooltip: strings.shareAction,
+                  icon: const Icon(Icons.share_outlined, size: 18),
+                  onPressed: () => ConfirmationSheet.show(
+                    context,
+                    appointment: appointment,
+                    entity: entity,
+                    eventType: eventType,
+                    strings: strings,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ],
       ),
     );
 
-    // Interactive Dual-Direction Swipe:
-    // Swipe Right -> Confirm / Mark Done
-    // Swipe Left -> Edit & Reschedule
-    cardContent = Dismissible(
-      key: ValueKey('swipe_${appointment.id}'),
-      direction: DismissDirection.horizontal,
-      confirmDismiss: (direction) async {
-        if (direction == DismissDirection.startToEnd) {
-          HapticFeedback.mediumImpact();
-          onConfirm();
-        } else if (direction == DismissDirection.endToStart) {
-          HapticFeedback.mediumImpact();
-          AppointmentDetailSheet.show(
-            context,
-            appointment: appointment,
-            entity: entity,
-            eventType: eventType,
-            strings: strings,
-          );
-        }
-        return false;
-      },
-      background: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        alignment: Alignment.centerLeft,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: LinearGradient(
-            colors: [
-              SyncroColors.clinicalEmerald.withValues(alpha: 0.85),
-              SyncroColors.electricIndigo.withValues(alpha: 0.65),
+    // Interactive Swipe:
+    // - External events: tap opens Google Calendar modal (no swipe dismissal).
+    // - Suggested events: Swipe Right = Confirm, Swipe Left = Edit.
+    // - Confirmed/Completed/Cancelled events: Swipe Left = Edit only (no slide confirmation).
+    if (!isExternal) {
+      cardContent = Dismissible(
+        key: ValueKey('swipe_${appointment.id}'),
+        direction: isSuggested
+            ? DismissDirection.horizontal
+            : DismissDirection.endToStart,
+        confirmDismiss: (direction) async {
+          if (direction == DismissDirection.startToEnd && isSuggested) {
+            HapticFeedback.mediumImpact();
+            onConfirm();
+          } else if (direction == DismissDirection.endToStart) {
+            HapticFeedback.mediumImpact();
+            AppointmentDetailSheet.show(
+              context,
+              appointment: appointment,
+              entity: entity,
+              eventType: eventType,
+              strings: strings,
+            );
+          }
+          return false;
+        },
+        background: isSuggested
+            ? Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                alignment: Alignment.centerLeft,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: LinearGradient(
+                    colors: [
+                      SyncroColors.clinicalEmerald.withValues(alpha: 0.85),
+                      SyncroColors.electricIndigo.withValues(alpha: 0.65),
+                    ],
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.verified_rounded, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text(
+                      strings.confirmAction,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : const SizedBox.shrink(),
+        secondaryBackground: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          alignment: Alignment.centerRight,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: LinearGradient(
+              colors: [
+                SyncroColors.amethystViolet.withValues(alpha: 0.70),
+                SyncroColors.electricIndigo.withValues(alpha: 0.85),
+              ],
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text(
+                strings.editAppointmentAction,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.edit_calendar_rounded, color: Colors.white),
             ],
           ),
         ),
-        child: Row(
-          children: [
-            const Icon(Icons.verified_rounded, color: Colors.white),
-            const SizedBox(width: 8),
-            Text(
-              strings.confirmAction,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
-      ),
-      secondaryBackground: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        alignment: Alignment.centerRight,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: LinearGradient(
-            colors: [
-              SyncroColors.amethystViolet.withValues(alpha: 0.70),
-              SyncroColors.electricIndigo.withValues(alpha: 0.85),
-            ],
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Text(
-              strings.editAppointmentAction,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(Icons.edit_calendar_rounded, color: Colors.white),
-          ],
-        ),
-      ),
-      child: cardContent,
-    );
+        child: cardContent,
+      );
+    }
 
     return IntrinsicHeight(
       child: Row(

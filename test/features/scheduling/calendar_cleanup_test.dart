@@ -287,4 +287,101 @@ void main() {
     expect(events.length, equals(1));
     expect(events.first.title, equals('MC1 - Patient 101 (Visit #1)'));
   });
+
+  test('syncAll sweeps duplicate and old-code Syncro events across calendars leaving only current code', () async {
+    final now = DateTime.now();
+    final visitDay = DateTime(now.year, now.month, now.day, 8, 0)
+        .add(const Duration(days: 6));
+    final slot = TimeRange(
+      start: visitDay,
+      end: visitDay.add(const Duration(minutes: 45)),
+    );
+
+    final multiCalClient = InMemoryCalendarClient(
+      initialCalendars: const [
+        ExternalCalendar(
+          id: 'cal_gmail',
+          name: 'soaresmessiasg130@gmail.com',
+          accountName: 'soaresmessiasg130@gmail.com',
+          colorHex: '#4285F4',
+        ),
+        ExternalCalendar(
+          id: 'cal_syncro',
+          name: 'Syncro',
+          accountName: 'soaresmessiasg130@gmail.com',
+          colorHex: '#6366F1',
+        ),
+      ],
+    );
+    final multiService = CalendarSyncService(
+      repository: repo,
+      calendarClient: multiCalClient,
+    );
+
+    // Legacy event with old MCS code sitting in the previous calendar (cal_gmail)
+    await multiCalClient.createOrUpdateEvent(
+      ExternalCalendarEvent(
+        externalEventId: 'legacy_mcs_evt',
+        calendarId: 'cal_gmail',
+        title: 'MCS - Patient 101 (Visit #2)',
+        description:
+            'Scheduled via Syncro Smart Engine\nCategory: Mounjaro Clinical Study\nParticipant: Patient 101\nProtocol Visit: #2',
+        timeRange: slot,
+      ),
+    );
+    // Outdated duplicate copy inside cal_syncro too
+    await multiCalClient.createOrUpdateEvent(
+      ExternalCalendarEvent(
+        externalEventId: 'stale_dup_syncro_evt',
+        calendarId: 'cal_syncro',
+        title: 'MCS - Patient 101 (Visit #2)',
+        description:
+            'Scheduled via Syncro Smart Engine\nCategory: Mounjaro Clinical Study\nParticipant: Patient 101\nProtocol Visit: #2',
+        timeRange: slot,
+      ),
+    );
+
+    const studyGroup = EventType(
+      id: 'et_mcs_sweep',
+      name: 'Mounjaro Clinical Study',
+      code: 'MCSX',
+      colorHex: '#14B8A6',
+      minDuration: Duration(minutes: 30),
+      maxDuration: Duration(minutes: 60),
+      calendarMappingId: 'cal_syncro',
+    );
+    await repo.upsertEventType(studyGroup);
+    await repo.upsertEntity(
+      const Entity(id: 'patient_101', name: 'Patient 101'),
+    );
+    await repo.upsertAppointment(
+      Appointment(
+        id: 'apt_mcsx_2',
+        entityId: 'patient_101',
+        eventTypeId: 'et_mcs_sweep',
+        timeRange: slot,
+        status: AppointmentStatus.confirmed,
+        visitIndex: 1,
+      ),
+    );
+
+    await multiService.syncAll();
+
+    final queryRange = TimeRange(
+      start: visitDay.subtract(const Duration(hours: 2)),
+      end: visitDay.add(const Duration(hours: 2)),
+    );
+    final gmailEvents = await multiCalClient.retrieveEvents(
+      calendarId: 'cal_gmail',
+      range: queryRange,
+    );
+    final syncroEvents = await multiCalClient.retrieveEvents(
+      calendarId: 'cal_syncro',
+      range: queryRange,
+    );
+
+    expect(gmailEvents, isEmpty);
+    expect(syncroEvents.length, equals(1));
+    expect(syncroEvents.first.title, equals('MCSX - Patient 101 (Visit #2)'));
+  });
 }

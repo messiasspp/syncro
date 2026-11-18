@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/services/local_notification_service.dart';
 import '../../../../core/theme/syncro_theme.dart';
 import '../../../../core/widgets/glass_container.dart';
 import '../../domain/models/work_schedule.dart';
@@ -409,6 +410,50 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     onPressed: () async {
                       HapticFeedback.mediumImpact();
+                      await LocalNotificationService.instance
+                          .requestPermission();
+                      await LocalNotificationService.instance.showNotification(
+                        id: 901,
+                        title: strings.isPt
+                            ? 'Alerta Syncro Ativo!'
+                            : 'Syncro Smart Alert Active!',
+                        body: strings.isPt
+                            ? 'Lembretes e alertas de conflito de agenda estão funcionando.'
+                            : 'Appointment reminders and Google Calendar conflict alerts are ready.',
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              strings.isPt
+                                  ? 'Notificação local enviada!'
+                                  : 'Test push notification sent!',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.notifications_active_rounded),
+                    label: Text(
+                      strings.isPt
+                          ? 'Testar Notificação Local'
+                          : 'Send Test Push Notification',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: () async {
+                      HapticFeedback.mediumImpact();
                       await ref.read(demoSeedServiceProvider).resetAndSeed();
                       ref.invalidate(eventTypesStreamProvider);
                       ref.invalidate(entitiesStreamProvider);
@@ -487,6 +532,16 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                       );
                       if (confirmed != true) return;
+                      try {
+                        final syncSvc = ref.read(calendarSyncServiceProvider);
+                        final audit = await syncSvc.auditSyncroCalendarData();
+                        if (audit.syncroEventsInUserCalendars.isNotEmpty) {
+                          await syncSvc.cleanSyncroCalendarData(
+                            calendarIdsToDelete: const [],
+                            eventsToDelete: audit.syncroEventsInUserCalendars,
+                          );
+                        }
+                      } catch (_) {}
                       await ref
                           .read(demoSeedServiceProvider)
                           .clearToCleanSlate();
@@ -494,6 +549,7 @@ class SettingsScreen extends ConsumerWidget {
                       ref.invalidate(entitiesStreamProvider);
                       ref.invalidate(protocolEnrollmentsStreamProvider);
                       ref.invalidate(appointmentsStreamProvider);
+                      ref.invalidate(externalCalendarEventsProvider);
                       ref.invalidate(calendarConflictsProvider);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(

@@ -351,6 +351,16 @@ class CalendarConnectSheet extends ConsumerWidget {
                     ),
                     onPressed: () async {
                       HapticFeedback.heavyImpact();
+                      try {
+                        final syncSvc = ref.read(calendarSyncServiceProvider);
+                        final audit = await syncSvc.auditSyncroCalendarData();
+                        if (audit.syncroEventsInUserCalendars.isNotEmpty) {
+                          await syncSvc.cleanSyncroCalendarData(
+                            calendarIdsToDelete: const [],
+                            eventsToDelete: audit.syncroEventsInUserCalendars,
+                          );
+                        }
+                      } catch (_) {}
                       await ref
                           .read(demoSeedServiceProvider)
                           .clearToCleanSlate();

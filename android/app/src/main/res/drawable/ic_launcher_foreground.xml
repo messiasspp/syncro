@@ -1,0 +1,33 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer calendar body (centered within 32..76 safe zone) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,34 H74 C76.8,34 79,36.2 79,39 V73 C79,75.8 76.8,78 74,78 H34 C31.2,78 29,75.8 29,73 V39 C29,36.2 31.2,34 34,34 Z" />
+    <!-- Calendar header strip -->
+    <path
+        android:fillColor="#6366F1"
+        android:pathData="M34,34 H74 C76.8,34 79,36.2 79,39 V46 H29 V39 C29,36.2 31.2,34 34,34 Z" />
+    <!-- Calendar binding pins -->
+    <path
+        android:fillColor="#14B8A6"
+        android:pathData="M39,28 C40.7,28 42,29.3 42,31 V36 C42,37.7 40.7,39 39,39 C37.3,39 36,37.7 36,36 V31 C36,29.3 37.3,28 39,28 Z" />
+    <path
+        android:fillColor="#14B8A6"
+        android:pathData="M69,28 C70.7,28 72,29.3 72,31 V36 C72,37.7 70.7,39 69,39 C67.3,39 66,37.7 66,36 V31 C66,29.3 67.3,28 69,28 Z" />
+    <!-- Syncro checkmark inside calendar -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M42,61 L50,69 L67,52"
+        android:strokeWidth="5.5"
+        android:strokeColor="#14B8A6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- Amethyst accent dot -->
+    <path
+        android:fillColor="#8B5CF6"
+        android:pathData="M42,53m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0" />
+</vector>

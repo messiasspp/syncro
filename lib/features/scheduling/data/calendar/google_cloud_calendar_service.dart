@@ -291,7 +291,37 @@ class GoogleCloudCalendarService {
     return mapped;
   }
 
-  /// Inserts or updates an event directly in Google Cloud Calendar [event.calendarId].
+  /// Extracts Syncro's embedded appointment ID from an event description.
+  static String? extractSyncroAppointmentId(String? description) {
+    if (description == null || description.isEmpty) return null;
+    return RegExp(r'SyncroAppointmentId:\s*(\S+)')
+        .firstMatch(description)
+        ?.group(1)
+        ?.trim();
+  }
+
+  /// Extracts the Participant line from a Syncro event description.
+  static String? extractParticipantLine(String? description) {
+    if (description == null || description.isEmpty) return null;
+    return RegExp(r'^Participant:\s*(.+)$', multiLine: true)
+        .firstMatch(description)
+        ?.group(1)
+        ?.trim();
+  }
+
+  /// Extracts the portion of a Syncro event title after ` - ` or ` — `.
+  static String? extractTitleSuffix(String? title) {
+    if (title == null || title.isEmpty) return null;
+    final sepIdx = title.contains(' - ')
+        ? title.indexOf(' - ')
+        : title.indexOf(' — ');
+    if (sepIdx < 0) return null;
+    return title.substring(sepIdx + 3).trim();
+  }
+
+  /// Inserts or updates an event directly in Google Cloud Calendar [event.calendarId],
+  /// matching existing Syncro events in the same slot so code/calendar changes update
+  /// in place and never leave duplicate events behind.
   Future<String> createOrUpdateCloudEvent(ExternalCalendarEvent event) async {
     final api = await _apiClient();
     final gEvent = gcal.Event(
@@ -310,16 +340,71 @@ class GoogleCloudCalendarService {
       ),
     );
 
-    gcal.Event saved;
+    gcal.Event? saved;
     final extId = event.externalEventId;
     if (extId != null && extId.isNotEmpty) {
       try {
         saved = await api.events.update(gEvent, event.calendarId, extId);
       } catch (_) {
+        saved = null;
+      }
+    }
+
+    if (saved == null) {
+      final expectedAptId = extractSyncroAppointmentId(event.description);
+      final expectedParticipant = extractParticipantLine(event.description);
+      final expectedSuffix = extractTitleSuffix(event.title);
+      final List<gcal.Event> slotMatches = [];
+
+      try {
+        final nearby = await api.events.list(
+          event.calendarId,
+          timeMin: event.timeRange.start
+              .subtract(const Duration(minutes: 1))
+              .toUtc(),
+          timeMax:
+              event.timeRange.end.add(const Duration(minutes: 1)).toUtc(),
+          singleEvents: true,
+        );
+        for (final candidate in nearby.items ?? const <gcal.Event>[]) {
+          final candId = candidate.id;
+          if (candId == null) continue;
+          final candDesc = candidate.description;
+          final candAptId = extractSyncroAppointmentId(candDesc);
+          final isSyncroDesc = candDesc != null &&
+              candDesc.contains('Scheduled via Syncro Smart Engine');
+          final sameAptId = expectedAptId != null && candAptId == expectedAptId;
+          final sameParticipant = isSyncroDesc &&
+              expectedParticipant != null &&
+              extractParticipantLine(candDesc) == expectedParticipant;
+          final sameSuffix = isSyncroDesc &&
+              expectedSuffix != null &&
+              extractTitleSuffix(candidate.summary) == expectedSuffix;
+          if (sameAptId || sameParticipant || sameSuffix) {
+            slotMatches.add(candidate);
+          }
+        }
+      } catch (_) {}
+
+      if (slotMatches.isNotEmpty) {
+        final primaryMatch = slotMatches.first;
+        saved = await api.events.update(
+          gEvent,
+          event.calendarId,
+          primaryMatch.id!,
+        );
+        // Clean up any duplicate Syncro copies already sitting in the same slot
+        for (var i = 1; i < slotMatches.length; i++) {
+          final dupId = slotMatches[i].id;
+          if (dupId != null && dupId != saved.id) {
+            try {
+              await api.events.delete(event.calendarId, dupId);
+            } catch (_) {}
+          }
+        }
+      } else {
         saved = await api.events.insert(gEvent, event.calendarId);
       }
-    } else {
-      saved = await api.events.insert(gEvent, event.calendarId);
     }
 
     await triggerNativeAndroidSync(signedInEmail);

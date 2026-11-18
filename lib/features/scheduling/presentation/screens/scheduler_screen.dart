@@ -27,6 +27,8 @@ class SchedulerScreen extends ConsumerStatefulWidget {
 class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
   int _modeIndex = 0; // 0 = Slot Finder, 1 = Protocol Cascade
   String? _selectedEntityId;
+  final Set<String> _extraEntityIds = {};
+  int _recurrenceMode = 0; // 0 = Once, 1 = Weekly (4x), 2 = Biweekly (4x), 3 = Monthly (3x)
   String? _selectedEnrollmentId;
   int _selectedVisitIndex = 1;
   int _cascadeDayShiftOffset = 3; // Interactive drag shift in days (1..21)
@@ -211,11 +213,50 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                   onChanged: (val) {
                     setState(() {
                       _selectedEntityId = val;
+                      if (val != null) _extraEntityIds.remove(val);
                       _candidateSlots = const [];
                       _hasSearchedSlots = false;
                     });
                   },
                 ),
+              if (entities.length > 1) ...[
+                const SizedBox(height: 10),
+                Text(
+                  strings.isPt
+                      ? 'Mais Pessoas (Reunião em Grupo)'
+                      : 'Additional Peoples (Group Meeting)',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    for (final e in entities)
+                      if (e.id != selectedEntity?.id)
+                        FilterChip(
+                          label: Text(
+                            e.name,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          selected: _extraEntityIds.contains(e.id),
+                          onSelected: (selected) {
+                            HapticFeedback.selectionClick();
+                            setState(() {
+                              if (selected) {
+                                _extraEntityIds.add(e.id);
+                              } else {
+                                _extraEntityIds.remove(e.id);
+                              }
+                            });
+                          },
+                        ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 12),
               if (eventType != null)
                 ListTile(
@@ -223,7 +264,7 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                   dense: true,
                   leading: const Icon(Icons.rule_folder_outlined),
                   title: Text(
-                    '${strings.isPt ? "Grupo" : "Group"}: ${eventType.name}',
+                    '${strings.isPt ? "Grupo" : "Group"}: ${eventType.effectiveCode} • ${eventType.name}',
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   subtitle: Text(
@@ -231,7 +272,39 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                     'Buffer ${eventType.bufferBefore.inMinutes}m/${eventType.bufferAfter.inMinutes}m',
                   ),
                 ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
+              Text(
+                strings.isPt ? 'Recorrência' : 'Recurrence',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  for (final (mode, label) in [
+                    (0, strings.isPt ? 'Único (1x)' : 'Once (1x)'),
+                    (1, strings.isPt ? 'Semanal (4x)' : 'Weekly (4x)'),
+                    (2, strings.isPt ? 'Quinzenal (4x)' : 'Biweekly (4x)'),
+                    (3, strings.isPt ? 'Mensal (3x)' : 'Monthly (3x)'),
+                  ])
+                    ChoiceChip(
+                      label: Text(
+                        label,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      selected: _recurrenceMode == mode,
+                      onSelected: (_) {
+                        HapticFeedback.selectionClick();
+                        setState(() => _recurrenceMode = mode);
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
               FilledButton.icon(
                 icon: const Icon(Icons.auto_awesome_rounded),
                 label: Text(
@@ -306,23 +379,56 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                     : () async {
                         HapticFeedback.mediumImpact();
                         final slot = _candidateSlots[i];
-                        final newApt = Appointment(
-                          id: 'apt_${DateTime.now().millisecondsSinceEpoch}',
-                          entityId: selectedEntity.id,
-                          eventTypeId: eventType.id,
-                          timeRange: slot,
-                          status: AppointmentStatus.confirmed,
-                        );
-                        await ref
-                            .read(schedulingRepositoryProvider)
-                            .upsertAppointment(newApt);
-                        await ref
-                            .read(calendarSyncServiceProvider)
-                            .pushAppointmentToCalendar(newApt);
+                        final selectedParticipants = <Entity>[
+                          selectedEntity,
+                          for (final e in entities)
+                            if (e.id != selectedEntity.id &&
+                                _extraEntityIds.contains(e.id))
+                              e,
+                        ];
+                        final targetEntityId =
+                            selectedParticipants.length == 1
+                                ? selectedEntity.id
+                                : selectedParticipants
+                                    .map((e) => e.name)
+                                    .join(', ');
+                        final displayNames = selectedParticipants
+                            .map((e) => e.name)
+                            .join(', ');
+
+                        final offsets = switch (_recurrenceMode) {
+                          1 => const [0, 7, 14, 21],
+                          2 => const [0, 14, 28, 42],
+                          3 => const [0, 30, 60],
+                          _ => const [0],
+                        };
+                        final baseMs = DateTime.now().millisecondsSinceEpoch;
+                        for (int idx = 0; idx < offsets.length; idx++) {
+                          final dayOffset = offsets[idx];
+                          final shiftedRange = TimeRange(
+                            start: slot.start.add(Duration(days: dayOffset)),
+                            end: slot.end.add(Duration(days: dayOffset)),
+                          );
+                          final newApt = Appointment(
+                            id: 'apt_${baseMs}_$idx',
+                            entityId: targetEntityId,
+                            eventTypeId: eventType.id,
+                            timeRange: shiftedRange,
+                            status: AppointmentStatus.confirmed,
+                            visitIndex: offsets.length > 1 ? idx : null,
+                          );
+                          await ref
+                              .read(schedulingRepositoryProvider)
+                              .upsertAppointment(newApt);
+                          await ref
+                              .read(calendarSyncServiceProvider)
+                              .pushAppointmentToCalendar(newApt);
+                        }
 
                         setState(() {
-                          _candidateSlots =
-                              _candidateSlots.where((s) => s != slot).toList();
+                          _candidateSlots = _candidateSlots
+                              .where((s) => s != slot)
+                              .toList();
                         });
 
                         if (context.mounted) {
@@ -330,8 +436,8 @@ class _SchedulerScreenState extends ConsumerState<SchedulerScreen> {
                             SnackBar(
                               content: Text(
                                 strings.isPt
-                                    ? 'Agendado e sincronizado para ${selectedEntity.name}!'
-                                    : 'Booked & synced for ${selectedEntity.name}!',
+                                    ? 'Agendado (${offsets.length}x) para $displayNames!'
+                                    : 'Booked (${offsets.length}x) & synced for $displayNames!',
                               ),
                             ),
                           );
