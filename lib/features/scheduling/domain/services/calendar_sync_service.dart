@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import '../../data/calendar/calendar_client.dart';
+import '../../data/calendar/google_cloud_calendar_service.dart';
 import '../../data/repositories/scheduling_repository.dart';
 import '../models/appointment.dart';
 import '../models/conflict_report.dart';
@@ -13,40 +14,113 @@ import 'slot_finder.dart';
 /// Orchestrates two-way synchronization between Syncro's local SQLite repository
 /// and native/external calendars (Google Calendar, Apple Calendar) via [CalendarClient].
 class CalendarSyncService {
+  static const String defaultCalendarName = 'Syncro';
+  static const String defaultCalendarColorHex = '#6366F1';
+
   final SchedulingRepository _repository;
   final CalendarClient _calendarClient;
+  final GoogleCloudCalendarService? _cloudService;
 
   const CalendarSyncService({
     required SchedulingRepository repository,
     required CalendarClient calendarClient,
+    GoogleCloudCalendarService? cloudService,
   })  : _repository = repository,
-        _calendarClient = calendarClient;
+        _calendarClient = calendarClient,
+        _cloudService = cloudService;
 
-  /// Ensures a target calendar exists on the device for [eventType] and persists its `calendarMappingId`.
-  /// On Android/iOS, automatically routes to the user's primary writable Google Calendar (`@gmail.com`)
-  /// rather than an isolated offline `Syncro` local account that Google Calendar hides by default.
+  /// Ensures the single default `"Syncro"` cloud calendar exists in the user's
+  /// connected Google account (or returns the primary writable `@gmail.com`
+  /// calendar if Cloud API is not signed in).
+  Future<String?> ensureDefaultSyncroCalendar() async {
+    final calendars = await _calendarClient.retrieveCalendars();
+    final writableUserCals = calendars
+        .where((c) =>
+            !c.isReadOnly &&
+            c.accountName != 'Syncro' &&
+            c.accountName != 'Syncro Local' &&
+            !c.name.startsWith('Syncro —'))
+        .toList();
+
+    final existingSyncro = writableUserCals
+        .where((c) => c.name.trim().toLowerCase() == 'syncro')
+        .firstOrNull;
+    if (existingSyncro != null) {
+      return existingSyncro.id;
+    }
+
+    if (_cloudService != null && _cloudService.isSignedIn) {
+      return _calendarClient.createDedicatedCalendar(
+        name: defaultCalendarName,
+        colorHex: defaultCalendarColorHex,
+      );
+    }
+
+    final primaryGmail = writableUserCals
+        .where((c) =>
+            c.name.contains('@gmail.com') ||
+            (c.accountName?.contains('@gmail.com') ?? false))
+        .firstOrNull;
+    return (primaryGmail ?? writableUserCals.firstOrNull)?.id;
+  }
+
+  /// Ensures a target calendar exists on the device or cloud for [eventType] and
+  /// persists its `calendarMappingId`.
+  ///
+  /// Priority order:
+  /// 1. Explicit Route Account mapping (`eventType.calendarMappingId` matching a writable calendar).
+  /// 2. Existing default `"Syncro"` calendar on the connected account.
+  /// 3. Auto-creates the single default `"Syncro"` cloud calendar when Cloud API is signed in.
+  /// 4. On Android/iOS without Cloud API, routes to the primary `@gmail.com` calendar.
+  /// 5. Desktop/in-memory fallback.
   Future<String> ensureDedicatedCalendarForEventType(
     EventType eventType,
   ) async {
     final calendars = await _calendarClient.retrieveCalendars();
     final existingMappingId = eventType.calendarMappingId;
 
-    if (Platform.isAndroid || Platform.isIOS) {
+    final writableUserCals = calendars
+        .where((c) =>
+            !c.isReadOnly &&
+            c.accountName != 'Syncro' &&
+            c.accountName != 'Syncro Local' &&
+            !c.name.startsWith('Syncro —'))
+        .toList();
+
+    // Priority 1: Explicit Route Account mapping
+    if (existingMappingId != null) {
       final existingCal =
-          calendars.where((c) => c.id == existingMappingId).firstOrNull;
-      if (existingCal != null &&
-          !existingCal.isReadOnly &&
-          !existingCal.name.startsWith('Syncro') &&
-          existingCal.accountName != 'Syncro') {
+          writableUserCals.where((c) => c.id == existingMappingId).firstOrNull;
+      if (existingCal != null) {
         return existingCal.id;
       }
+    }
 
-      final writableUserCals = calendars
-          .where((c) =>
-              !c.isReadOnly &&
-              !c.name.startsWith('Syncro') &&
-              c.accountName != 'Syncro')
-          .toList();
+    // Priority 2: Existing default "Syncro" calendar
+    final existingSyncro = writableUserCals
+        .where((c) => c.name.trim().toLowerCase() == 'syncro')
+        .firstOrNull;
+    if (existingSyncro != null) {
+      await _repository.upsertEventType(
+        eventType.copyWith(calendarMappingId: existingSyncro.id),
+      );
+      return existingSyncro.id;
+    }
+
+    // Priority 3: Auto-create single default "Syncro" Google Cloud Calendar when signed in
+    if (_cloudService != null && _cloudService.isSignedIn) {
+      final createdCalendarId = await _calendarClient.createDedicatedCalendar(
+        name: defaultCalendarName,
+        colorHex: defaultCalendarColorHex,
+      );
+      await _repository.upsertEventType(
+        eventType.copyWith(calendarMappingId: createdCalendarId),
+      );
+      return createdCalendarId;
+    }
+
+    // Priority 4: Mobile fallback to primary @gmail.com calendar when not signed into Cloud API
+    if (Platform.isAndroid || Platform.isIOS) {
       final primaryGmail = writableUserCals
           .where((c) =>
               c.name.contains('@gmail.com') ||
@@ -67,6 +141,7 @@ class CalendarSyncService {
       return existingMappingId;
     }
 
+    // Priority 5: Desktop / unit test fallback
     final calendarTitle = 'Syncro — ${eventType.name}';
     final createdCalendarId = await _calendarClient.createDedicatedCalendar(
       name: calendarTitle,
@@ -117,8 +192,9 @@ class CalendarSyncService {
     if (hasPerms) {
       final calendars = await _calendarClient.retrieveCalendars();
       for (final calendar in calendars) {
-        if (calendar.name.startsWith('Syncro') ||
-            calendar.accountName == 'Syncro') {
+        if (calendar.accountName == 'Syncro' ||
+            calendar.accountName == 'Syncro Local' ||
+            calendar.name.startsWith('Syncro —')) {
           continue;
         }
         final externalEvents = await _calendarClient.retrieveEvents(
@@ -418,4 +494,245 @@ class CalendarSyncService {
       errors: errors,
     );
   }
+
+  /// Audits all device calendars to find orphaned local Syncro calendars,
+  /// other local (non-cloud) calendars, and Syncro-created events inside
+  /// user cloud calendars (e.g. Google Calendar).
+  Future<SyncroCalendarAudit> auditSyncroCalendarData() async {
+    final hasPerms = await _calendarClient.requestPermissions();
+    if (!hasPerms) {
+      return const SyncroCalendarAudit(
+        syncroCalendars: [],
+        otherLocalCalendars: [],
+        syncroEventsInUserCalendars: [],
+      );
+    }
+
+    final rawCalendars = await _calendarClient.retrieveRawCalendars();
+    final appointments = await _repository.getAllAppointments();
+    final knownExternalIds = {
+      for (final apt in appointments)
+        if (apt.externalCalendarEventId != null) apt.externalCalendarEventId!,
+    };
+
+    final List<ExternalCalendar> syncroCalendars = [];
+    final List<ExternalCalendar> otherLocalCalendars = [];
+    final List<ExternalCalendar> userCalendars = [];
+
+    for (final cal in rawCalendars) {
+      final acct = (cal.accountName ?? '').trim();
+      final isDemoCal =
+          cal.name == 'Friends Zone' || cal.name == 'Mounjaro Clinical Study';
+      final isSyncroCal = acct == 'Syncro' ||
+          acct == 'Syncro Local' ||
+          cal.name.startsWith('Syncro') ||
+          isDemoCal;
+      if (isSyncroCal) {
+        syncroCalendars.add(cal);
+        continue;
+      }
+
+      final isCloudAccount =
+          acct.contains('@') || acct.toLowerCase() == 'icloud';
+      if (!cal.isReadOnly && !isCloudAccount) {
+        otherLocalCalendars.add(cal);
+      }
+      userCalendars.add(cal);
+    }
+
+    if (_cloudService != null && _cloudService.isSignedIn) {
+      try {
+        final managedCloudCals =
+            await _cloudService.listSyncroManagedCloudCalendars();
+        final existingIds = syncroCalendars.map((c) => c.id).toSet();
+        final existingNames =
+            syncroCalendars.map((c) => c.name.trim().toLowerCase()).toSet();
+        for (final cal in managedCloudCals) {
+          if (!existingIds.contains(cal.id) &&
+              !existingNames.contains(cal.name.trim().toLowerCase())) {
+            syncroCalendars.add(cal);
+          }
+        }
+      } catch (_) {}
+    }
+
+    final now = DateTime.now();
+    final searchRange = TimeRange(
+      start: DateTime(now.year - 2, 1, 1),
+      end: DateTime(now.year + 3, 12, 31),
+    );
+
+    final List<ExternalCalendarEvent> syncroEventsInUserCalendars = [];
+    for (final cal in userCalendars) {
+      if (cal.isReadOnly) continue;
+      try {
+        final events = await _calendarClient.retrieveEvents(
+          calendarId: cal.id,
+          range: searchRange,
+        );
+        for (final evt in events) {
+          final isSyncroDesc = evt.description != null &&
+              evt.description!.contains('Scheduled via Syncro Smart Engine');
+          final isKnownId = evt.externalEventId != null &&
+              knownExternalIds.contains(evt.externalEventId);
+          if (isSyncroDesc || isKnownId) {
+            syncroEventsInUserCalendars.add(evt);
+          }
+        }
+      } catch (_) {}
+    }
+
+    return SyncroCalendarAudit(
+      syncroCalendars: syncroCalendars,
+      otherLocalCalendars: otherLocalCalendars,
+      syncroEventsInUserCalendars: syncroEventsInUserCalendars,
+    );
+  }
+
+  /// Deletes the selected Syncro local calendars and/or Syncro-created events
+  /// from device/Google calendars, and clears stale external IDs in SQLite.
+  Future<SyncroCleanupResult> cleanSyncroCalendarData({
+    required List<String> calendarIdsToDelete,
+    required List<ExternalCalendarEvent> eventsToDelete,
+  }) async {
+    int deletedCalendars = 0;
+    int deletedEvents = 0;
+    int failedCount = 0;
+
+    final deletedCalSet = calendarIdsToDelete.toSet();
+    final List<ExternalCalendar> rawCals = deletedCalSet.isNotEmpty
+        ? await _calendarClient.retrieveRawCalendars()
+        : const [];
+    final List<ExternalCalendar> cloudCals =
+        (deletedCalSet.isNotEmpty &&
+                _cloudService != null &&
+                _cloudService.isSignedIn)
+            ? await _cloudService.listCloudCalendars().catchError(
+                  (_) => const <ExternalCalendar>[],
+                )
+            : const [];
+
+    for (final calId in calendarIdsToDelete) {
+      var ok = false;
+      final rawCal = rawCals.where((c) => c.id == calId).firstOrNull;
+
+      if (_cloudService != null && _cloudService.isSignedIn) {
+        final cloudMatch = cloudCals
+            .where((c) =>
+                c.id == calId ||
+                (rawCal != null &&
+                    c.name.trim().toLowerCase() ==
+                        rawCal.name.trim().toLowerCase()))
+            .firstOrNull;
+        if (cloudMatch != null) {
+          try {
+            ok = await _cloudService.deleteCloudCalendar(cloudMatch.id);
+          } catch (_) {}
+        }
+      }
+
+      if (!ok) {
+        try {
+          ok = await _calendarClient.deleteCalendar(calId);
+        } catch (_) {}
+      }
+
+      if (ok) {
+        deletedCalendars++;
+      } else {
+        failedCount++;
+      }
+    }
+
+    // Clear calendarMappingId on any EventType pointing to a deleted calendar
+    if (deletedCalSet.isNotEmpty) {
+      final eventTypes = await _repository.getAllEventTypes();
+      for (final et in eventTypes) {
+        if (et.calendarMappingId != null &&
+            deletedCalSet.contains(et.calendarMappingId)) {
+          await _repository.upsertEventType(
+            et.copyWith(clearCalendarMappingId: true),
+          );
+        }
+      }
+    }
+
+    final Set<String> deletedEventIds = {};
+    for (final evt in eventsToDelete) {
+      final extId = evt.externalEventId;
+      if (extId == null) continue;
+      try {
+        final ok = await _calendarClient.deleteEvent(
+          calendarId: evt.calendarId,
+          externalEventId: extId,
+        );
+        if (ok) {
+          deletedEvents++;
+          deletedEventIds.add(extId);
+        } else {
+          failedCount++;
+        }
+      } catch (_) {
+        failedCount++;
+      }
+    }
+
+    // Clear externalCalendarEventId on any Appointment whose external event was removed
+    // or whose Group's calendar was deleted.
+    final appointments = await _repository.getAllAppointments();
+    final eventTypes = await _repository.getAllEventTypes();
+    final mappedCalByEventType = {
+      for (final et in eventTypes) et.id: et.calendarMappingId,
+    };
+
+    for (final apt in appointments) {
+      final extId = apt.externalCalendarEventId;
+      if (extId == null) continue;
+      final groupCalId = mappedCalByEventType[apt.eventTypeId];
+      if (deletedEventIds.contains(extId) ||
+          (groupCalId != null && deletedCalSet.contains(groupCalId)) ||
+          deletedCalSet.isNotEmpty && groupCalId == null) {
+        await _repository.upsertAppointment(
+          apt.copyWith(clearExternalCalendarEventId: true),
+        );
+      }
+    }
+
+    return SyncroCleanupResult(
+      deletedCalendarsCount: deletedCalendars,
+      deletedEventsCount: deletedEvents,
+      failedCount: failedCount,
+    );
+  }
+}
+
+/// Snapshot of Syncro-created calendars and events currently on the device.
+class SyncroCalendarAudit {
+  final List<ExternalCalendar> syncroCalendars;
+  final List<ExternalCalendar> otherLocalCalendars;
+  final List<ExternalCalendarEvent> syncroEventsInUserCalendars;
+
+  const SyncroCalendarAudit({
+    required this.syncroCalendars,
+    required this.otherLocalCalendars,
+    required this.syncroEventsInUserCalendars,
+  });
+
+  bool get isEmpty =>
+      syncroCalendars.isEmpty &&
+      otherLocalCalendars.isEmpty &&
+      syncroEventsInUserCalendars.isEmpty;
+}
+
+/// Outcome report returned after running [CalendarSyncService.cleanSyncroCalendarData].
+class SyncroCleanupResult {
+  final int deletedCalendarsCount;
+  final int deletedEventsCount;
+  final int failedCount;
+
+  const SyncroCleanupResult({
+    required this.deletedCalendarsCount,
+    required this.deletedEventsCount,
+    required this.failedCount,
+  });
 }

@@ -292,6 +292,10 @@ Future<void> _showCreateEventTypeDialog(
                   final postMin = int.tryParse(bufAfterCtrl.text) ?? 0;
 
                   final primaryCal = ref.read(activePrimaryCalendarProvider);
+                  final initialCalId = (primaryCal != null &&
+                          primaryCal.name.trim().toLowerCase() == 'syncro')
+                      ? primaryCal.id
+                      : null;
                   final newEt = EventType(
                     id: 'et_${DateTime.now().millisecondsSinceEpoch}',
                     name: name,
@@ -304,11 +308,17 @@ Future<void> _showCreateEventTypeDialog(
                     bufferBefore: Duration(minutes: preMin),
                     bufferAfter: Duration(minutes: postMin),
                     schedulingMode: selectedMode,
-                    calendarMappingId: primaryCal?.id,
+                    calendarMappingId: initialCalId,
                   );
                   await ref
                       .read(schedulingRepositoryProvider)
                       .upsertEventType(newEt);
+                  try {
+                    await ref
+                        .read(calendarSyncServiceProvider)
+                        .ensureDedicatedCalendarForEventType(newEt);
+                    ref.invalidate(externalCalendarsFutureProvider);
+                  } catch (_) {}
                   if (ctx.mounted) Navigator.of(ctx).pop();
                 },
                 child: Text(strings.isPt ? 'Salvar' : 'Save'),
@@ -519,7 +529,22 @@ Future<void> _showCalendarRoutingDialog(
   required List<ExternalCalendar> calendars,
   required AppStrings strings,
 }) async {
-  final writableCalendars = calendars.where((c) => !c.isReadOnly).toList();
+  final writableCalendars = calendars
+      .where((c) =>
+          !c.isReadOnly &&
+          c.accountName != 'Syncro' &&
+          c.accountName != 'Syncro Local' &&
+          !c.name.startsWith('Syncro —'))
+      .toList();
+
+  final calendarsByAccount = <String, List<ExternalCalendar>>{};
+  for (final cal in writableCalendars) {
+    final accountKey =
+        (cal.accountName != null && cal.accountName!.trim().isNotEmpty)
+            ? cal.accountName!.trim()
+            : (strings.isPt ? 'Calendário Local' : 'Local Calendar');
+    calendarsByAccount.putIfAbsent(accountKey, () => []).add(cal);
+  }
 
   await showDialog<void>(
     context: context,
@@ -536,8 +561,8 @@ Future<void> _showCalendarRoutingDialog(
             Expanded(
               child: Text(
                 strings.isPt
-                    ? 'Roteamento de Calendário • ${eventType.name}'
-                    : 'Calendar Account Routing • ${eventType.name}',
+                    ? 'Rotear Conta & Calendário • ${eventType.name}'
+                    : 'Route Account & Calendar • ${eventType.name}',
                 style: const TextStyle(
                   fontSize: 15.5,
                   fontWeight: FontWeight.w800,
@@ -555,27 +580,27 @@ Future<void> _showCalendarRoutingDialog(
               children: [
                 Text(
                   strings.isPt
-                      ? 'Escolha para qual conta/calendário do dispositivo os agendamentos desta categoria devem ser enviados:'
-                      : 'Select which device calendar account appointments in this category should sync to:',
+                      ? 'Por padrão todo grupo salva no calendário "Syncro". Escolha abaixo uma conta e calendário específicos:'
+                      : 'By default all groups sync to the "Syncro" calendar. Pick any specific account and calendar below:',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 12),
-                // Option 1: Auto-provision dedicated sub-calendar
+                // Quick action: Use Default "Syncro" calendar
                 ListTile(
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  tileColor: SyncroColors.clinicalEmerald.withValues(alpha: 0.10),
+                  tileColor: SyncroColors.electricIndigo.withValues(alpha: 0.12),
                   leading: const Icon(
-                    Icons.create_new_folder_rounded,
-                    color: SyncroColors.clinicalEmerald,
+                    Icons.cloud_done_rounded,
+                    color: SyncroColors.electricIndigo,
                   ),
                   title: Text(
                     strings.isPt
-                        ? 'Sub-Calendário Dedicado (Syncro — ${eventType.name})'
-                        : 'Dedicated Sub-Calendar (Syncro — ${eventType.name})',
+                        ? 'Usar Calendário Padrão "Syncro"'
+                        : 'Use Default "Syncro" Calendar',
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
@@ -583,77 +608,203 @@ Future<void> _showCalendarRoutingDialog(
                   ),
                   subtitle: Text(
                     strings.isPt
-                        ? 'Cria/vincula automaticamente um sub-calendário isolado'
-                        : 'Automatically provisions an isolated category sub-calendar',
+                        ? 'Salva os eventos de "${eventType.name}" no calendário principal do Syncro'
+                        : 'Routes "${eventType.name}" events to the default Syncro calendar',
                     style: const TextStyle(fontSize: 11.5),
                   ),
                   onTap: () async {
-                    await ref
+                    final defaultId = await ref
                         .read(calendarSyncServiceProvider)
-                        .ensureDedicatedCalendarForEventType(eventType);
+                        .ensureDefaultSyncroCalendar();
+                    if (defaultId != null) {
+                      await ref
+                          .read(schedulingRepositoryProvider)
+                          .upsertEventType(
+                            eventType.copyWith(calendarMappingId: defaultId),
+                          );
+                    }
                     ref.invalidate(externalCalendarsFutureProvider);
-                    if (ctx.mounted) Navigator.of(ctx).pop();
+                    if (ctx.mounted) {
+                      Navigator.of(ctx).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            strings.isPt
+                                ? '"${eventType.name}" roteado para o calendário padrão Syncro!'
+                                : 'Routed "${eventType.name}" to default Syncro calendar!',
+                          ),
+                        ),
+                      );
+                    }
                   },
                 ),
                 const Divider(height: 20),
-                Text(
-                  strings.isPt
-                      ? 'Contas Conectadas no Dispositivo (${writableCalendars.length})'
-                      : 'Connected Device Accounts (${writableCalendars.length})',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                for (final cal in writableCalendars)
-                  ListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                if (calendarsByAccount.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      strings.isPt
+                          ? 'Nenhum calendário gravável encontrado no momento.'
+                          : 'No writable calendars found yet.',
+                      style: const TextStyle(fontSize: 12),
                     ),
-                    leading: Icon(
-                      cal.id == eventType.calendarMappingId
-                          ? Icons.radio_button_checked_rounded
-                          : Icons.radio_button_off_rounded,
-                      color: cal.id == eventType.calendarMappingId
-                          ? SyncroColors.clinicalEmerald
-                          : Colors.grey,
-                      size: 20,
-                    ),
-                    title: Text(
-                      cal.name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                    ),
-                    subtitle: Text(
-                      '${cal.accountName ?? "Local"} • ID: ${cal.id}',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                    onTap: () async {
-                      final updated =
-                          eventType.copyWith(calendarMappingId: cal.id);
-                      await ref
-                          .read(schedulingRepositoryProvider)
-                          .upsertEventType(updated);
-                      ref.invalidate(externalCalendarsFutureProvider);
-                      if (ctx.mounted) {
-                        Navigator.of(ctx).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              strings.isPt
-                                  ? '"${eventType.name}" roteado para ${cal.name}!'
-                                  : 'Routed "${eventType.name}" to ${cal.name}!',
+                  )
+                else
+                  for (final entry in calendarsByAccount.entries) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6, bottom: 4),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.account_circle_rounded,
+                            size: 16,
+                            color: SyncroColors.clinicalEmerald,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              entry.key,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                                color: SyncroColors.clinicalEmerald,
+                              ),
                             ),
                           ),
-                        );
+                        ],
+                      ),
+                    ),
+                    for (final cal in entry.value)
+                      ListTile(
+                        dense: true,
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        leading: Icon(
+                          cal.id == eventType.calendarMappingId
+                              ? Icons.radio_button_checked_rounded
+                              : Icons.radio_button_off_rounded,
+                          color: cal.id == eventType.calendarMappingId
+                              ? SyncroColors.clinicalEmerald
+                              : Colors.grey,
+                          size: 20,
+                        ),
+                        title: Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              margin: const EdgeInsets.only(right: 6),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: parseHexColor(cal.colorHex),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                cal.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            if (cal.name.trim().toLowerCase() == 'syncro')
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(6),
+                                  color: SyncroColors.electricIndigo
+                                      .withValues(alpha: 0.16),
+                                ),
+                                child: Text(
+                                  strings.isPt ? 'PADRÃO' : 'DEFAULT',
+                                  style: const TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: SyncroColors.electricIndigo,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        onTap: () async {
+                          final updated =
+                              eventType.copyWith(calendarMappingId: cal.id);
+                          await ref
+                              .read(schedulingRepositoryProvider)
+                              .upsertEventType(updated);
+                          ref.invalidate(externalCalendarsFutureProvider);
+                          if (ctx.mounted) {
+                            Navigator.of(ctx).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  strings.isPt
+                                      ? '"${eventType.name}" roteado para ${entry.key} • ${cal.name}!'
+                                      : 'Routed "${eventType.name}" to ${entry.key} • ${cal.name}!',
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                  ],
+                const Divider(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.create_new_folder_rounded, size: 17),
+                    label: Text(
+                      strings.isPt
+                          ? '+ Criar Calendário Exclusivo (${eventType.name})'
+                          : '+ Create Dedicated Calendar (${eventType.name})',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    onPressed: () async {
+                      try {
+                        final createdId = await ref
+                            .read(calendarClientProvider)
+                            .createDedicatedCalendar(
+                              name: eventType.name,
+                              colorHex: eventType.colorHex,
+                            );
+                        await ref
+                            .read(schedulingRepositoryProvider)
+                            .upsertEventType(
+                              eventType.copyWith(calendarMappingId: createdId),
+                            );
+                        ref.invalidate(externalCalendarsFutureProvider);
+                        if (ctx.mounted) {
+                          Navigator.of(ctx).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                strings.isPt
+                                    ? 'Calendário "${eventType.name}" criado e vinculado!'
+                                    : 'Created & linked dedicated "${eventType.name}" calendar!',
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(e.toString())),
+                          );
+                        }
                       }
                     },
                   ),
+                ),
               ],
             ),
           ),

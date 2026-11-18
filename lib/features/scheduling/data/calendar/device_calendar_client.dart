@@ -8,6 +8,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../../domain/models/external_calendar.dart';
 import '../../domain/models/time_range.dart';
 import 'calendar_client.dart';
+import 'google_cloud_calendar_service.dart';
 
 /// Production [CalendarClient] backed by `package:device_calendar`
 /// (iOS EventKit & Android CalendarProvider).
@@ -19,12 +20,19 @@ import 'calendar_client.dart';
 class NativeDeviceCalendarClient implements CalendarClient {
   final DeviceCalendarPlugin _plugin;
   final InMemoryCalendarClient _fallbackClient;
+  final GoogleCloudCalendarService? _cloudService;
 
   NativeDeviceCalendarClient({
     DeviceCalendarPlugin? plugin,
     InMemoryCalendarClient? fallbackClient,
+    GoogleCloudCalendarService? cloudService,
   })  : _plugin = plugin ?? DeviceCalendarPlugin(),
-        _fallbackClient = fallbackClient ?? InMemoryCalendarClient();
+        _fallbackClient = fallbackClient ?? InMemoryCalendarClient(),
+        _cloudService = cloudService;
+
+  bool get _isCloudReady => _cloudService != null && _cloudService.isSignedIn;
+
+  static bool _isCloudCalendarId(String id) => id.contains('@');
 
   bool get _supportsNativeDeviceCalendar {
     if (kIsWeb) return false;
@@ -65,37 +73,101 @@ class NativeDeviceCalendarClient implements CalendarClient {
 
   @override
   Future<List<ExternalCalendar>> retrieveCalendars() async {
+    final List<ExternalCalendar> validCalendars = [];
+
     if (!_supportsNativeDeviceCalendar) {
-      return _fallbackClient.retrieveCalendars();
+      validCalendars.addAll(await _fallbackClient.retrieveCalendars());
+    } else {
+      try {
+        final result = await _plugin.retrieveCalendars();
+        final calendars = result.data ?? const <Calendar>[];
+        for (final c in calendars) {
+          if (c.id == null) continue;
+          // Automatically purge legacy offline 'Syncro' sub-calendars while preserving
+          // any cloud Google calendar explicitly named 'Syncro'.
+          if (c.accountName == 'Syncro' ||
+              c.accountName == 'Syncro Local' ||
+              (c.name != null && c.name!.startsWith('Syncro —'))) {
+            try {
+              await _plugin.deleteCalendar(c.id!);
+            } catch (_) {}
+            continue;
+          }
+          validCalendars.add(
+            ExternalCalendar(
+              id: c.id!,
+              name: c.name ?? 'Unnamed Calendar',
+              accountName: c.accountName,
+              colorHex: _intColorToHex(c.color),
+              isReadOnly: c.isReadOnly ?? false,
+            ),
+          );
+        }
+      } on MissingPluginException {
+        validCalendars.addAll(await _fallbackClient.retrieveCalendars());
+      }
+    }
+
+    if (_isCloudReady) {
+      try {
+        final cloudCals = await _cloudService!.listCloudCalendars();
+        final existingIds = validCalendars.map((c) => c.id).toSet();
+        final existingNames =
+            validCalendars.map((c) => c.name.trim().toLowerCase()).toSet();
+        for (final cal in cloudCals) {
+          if (!existingIds.contains(cal.id) &&
+              !existingNames.contains(cal.name.trim().toLowerCase())) {
+            validCalendars.add(cal);
+          }
+        }
+      } catch (_) {}
+    }
+
+    return validCalendars;
+  }
+
+  @override
+  Future<List<ExternalCalendar>> retrieveRawCalendars() async {
+    if (!_supportsNativeDeviceCalendar) {
+      return _fallbackClient.retrieveRawCalendars();
     }
 
     try {
       final result = await _plugin.retrieveCalendars();
       final calendars = result.data ?? const <Calendar>[];
-      final List<ExternalCalendar> validCalendars = [];
-      for (final c in calendars) {
-        if (c.id == null) continue;
-        // Automatically purge legacy offline 'Syncro' sub-calendars so only real Google/device accounts remain
-        if (c.accountName == 'Syncro' ||
-            (c.name != null && c.name!.startsWith('Syncro —'))) {
-          try {
-            await _plugin.deleteCalendar(c.id!);
-          } catch (_) {}
-          continue;
-        }
-        validCalendars.add(
-          ExternalCalendar(
-            id: c.id!,
-            name: c.name ?? 'Unnamed Calendar',
-            accountName: c.accountName,
-            colorHex: _intColorToHex(c.color),
-            isReadOnly: c.isReadOnly ?? false,
-          ),
-        );
-      }
-      return validCalendars;
+      return [
+        for (final c in calendars)
+          if (c.id != null)
+            ExternalCalendar(
+              id: c.id!,
+              name: c.name ?? 'Unnamed Calendar',
+              accountName: c.accountName,
+              colorHex: _intColorToHex(c.color),
+              isReadOnly: c.isReadOnly ?? false,
+            ),
+      ];
     } on MissingPluginException {
-      return _fallbackClient.retrieveCalendars();
+      return _fallbackClient.retrieveRawCalendars();
+    }
+  }
+
+  @override
+  Future<bool> deleteCalendar(String calendarId) async {
+    if (_isCloudReady && _isCloudCalendarId(calendarId)) {
+      try {
+        return await _cloudService!.deleteCloudCalendar(calendarId);
+      } catch (_) {}
+    }
+
+    if (!_supportsNativeDeviceCalendar) {
+      return _fallbackClient.deleteCalendar(calendarId);
+    }
+
+    try {
+      final result = await _plugin.deleteCalendar(calendarId);
+      return result.isSuccess && (result.data ?? false);
+    } on MissingPluginException {
+      return _fallbackClient.deleteCalendar(calendarId);
     }
   }
 
@@ -104,6 +176,37 @@ class NativeDeviceCalendarClient implements CalendarClient {
     required String name,
     required String colorHex,
   }) async {
+    final targetNorm = name.trim().toLowerCase();
+    final existing = await retrieveCalendars();
+    for (final cal in existing) {
+      if (cal.name.trim().toLowerCase() == targetNorm && !cal.isReadOnly) {
+        return cal.id;
+      }
+    }
+
+    if (_isCloudReady) {
+      final cloudCal = await _cloudService!.ensureCloudCalendar(
+        name: name,
+        colorHex: colorHex,
+      );
+      if (_supportsNativeDeviceCalendar) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        try {
+          final nativeRes = await _plugin.retrieveCalendars();
+          for (final c in nativeRes.data ?? const <Calendar>[]) {
+            if (c.id != null &&
+                !(c.isReadOnly ?? false) &&
+                (c.name?.trim().toLowerCase() ?? '') == targetNorm &&
+                c.accountName != 'Syncro' &&
+                c.accountName != 'Syncro Local') {
+              return c.id!;
+            }
+          }
+        } catch (_) {}
+      }
+      return cloudCal.id;
+    }
+
     if (!_supportsNativeDeviceCalendar) {
       return _fallbackClient.createDedicatedCalendar(
         name: name,
@@ -112,13 +215,6 @@ class NativeDeviceCalendarClient implements CalendarClient {
     }
 
     try {
-      final existing = await retrieveCalendars();
-      for (final cal in existing) {
-        if (cal.name == name && !cal.isReadOnly) {
-          return cal.id;
-        }
-      }
-
       final result = await _plugin.createCalendar(
         name,
         calendarColor: _hexToColor(colorHex),
@@ -142,6 +238,13 @@ class NativeDeviceCalendarClient implements CalendarClient {
     required String calendarId,
     required TimeRange range,
   }) async {
+    if (_isCloudReady && _isCloudCalendarId(calendarId)) {
+      return _cloudService!.retrieveCloudEvents(
+        calendarId: calendarId,
+        range: range,
+      );
+    }
+
     if (!_supportsNativeDeviceCalendar) {
       return _fallbackClient.retrieveEvents(
         calendarId: calendarId,
@@ -191,6 +294,10 @@ class NativeDeviceCalendarClient implements CalendarClient {
 
   @override
   Future<String> createOrUpdateEvent(ExternalCalendarEvent event) async {
+    if (_isCloudReady && _isCloudCalendarId(event.calendarId)) {
+      return _cloudService!.createOrUpdateCloudEvent(event);
+    }
+
     if (!_supportsNativeDeviceCalendar) {
       return _fallbackClient.createOrUpdateEvent(event);
     }
@@ -239,6 +346,13 @@ class NativeDeviceCalendarClient implements CalendarClient {
     required String calendarId,
     required String externalEventId,
   }) async {
+    if (_isCloudReady && _isCloudCalendarId(calendarId)) {
+      return _cloudService!.deleteCloudEvent(
+        calendarId: calendarId,
+        externalEventId: externalEventId,
+      );
+    }
+
     if (!_supportsNativeDeviceCalendar) {
       return _fallbackClient.deleteEvent(
         calendarId: calendarId,

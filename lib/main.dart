@@ -74,6 +74,16 @@ class _SyncroHomeScreenState extends ConsumerState<SyncroHomeScreen>
     if (Platform.isAndroid || Platform.isIOS) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
+        final cloudSvc = ref.read(googleCloudCalendarServiceProvider);
+        final restored = await cloudSvc.tryRestoreSilentSignIn();
+        if (restored && mounted) {
+          ref.read(googleCloudConnectedEmailProvider.notifier).state =
+              cloudSvc.signedInEmail;
+          await ref
+              .read(calendarSyncServiceProvider)
+              .ensureDefaultSyncroCalendar();
+        }
+        if (!mounted) return;
         await ref.read(externalCalendarsFutureProvider.future);
         await ref.read(calendarSyncServiceProvider).syncAll();
         ref.invalidate(externalCalendarsFutureProvider);

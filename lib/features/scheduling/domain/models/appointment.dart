@@ -38,6 +38,7 @@ class Appointment {
     int? visitIndex,
     String? protocolEnrollmentId,
     String? externalCalendarEventId,
+    bool clearExternalCalendarEventId = false,
   }) {
     return Appointment(
       id: id ?? this.id,
@@ -47,8 +48,9 @@ class Appointment {
       status: status ?? this.status,
       visitIndex: visitIndex ?? this.visitIndex,
       protocolEnrollmentId: protocolEnrollmentId ?? this.protocolEnrollmentId,
-      externalCalendarEventId:
-          externalCalendarEventId ?? this.externalCalendarEventId,
+      externalCalendarEventId: clearExternalCalendarEventId
+          ? null
+          : (externalCalendarEventId ?? this.externalCalendarEventId),
     );
   }
 }

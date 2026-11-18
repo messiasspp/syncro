@@ -12,8 +12,15 @@ abstract class CalendarClient {
   /// Checks whether calendar permissions have already been granted.
   Future<bool> hasPermissions();
 
-  /// Returns all accessible calendars on the device/account.
+  /// Returns all accessible calendars on the device/account (filtered for normal use).
   Future<List<ExternalCalendar>> retrieveCalendars();
+
+  /// Returns every raw calendar on the device without filtering or side-effects,
+  /// allowing the user to audit and clean up orphaned Syncro local calendars.
+  Future<List<ExternalCalendar>> retrieveRawCalendars();
+
+  /// Deletes a local or sub-calendar from the device by [calendarId].
+  Future<bool> deleteCalendar(String calendarId);
 
   /// Creates a new dedicated sub-calendar (e.g. "Syncro — Mounjaro Clinical Study")
   /// and returns its newly assigned calendar ID.
@@ -92,6 +99,15 @@ class InMemoryCalendarClient implements CalendarClient {
   Future<List<ExternalCalendar>> retrieveCalendars() async {
     if (!_permissionsGranted) return const [];
     return _calendars.values.toList();
+  }
+
+  @override
+  Future<List<ExternalCalendar>> retrieveRawCalendars() => retrieveCalendars();
+
+  @override
+  Future<bool> deleteCalendar(String calendarId) async {
+    _eventsByCalendar.remove(calendarId);
+    return _calendars.remove(calendarId) != null;
   }
 
   @override

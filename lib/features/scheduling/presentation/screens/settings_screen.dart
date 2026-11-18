@@ -8,6 +8,7 @@ import '../../../../core/widgets/glass_container.dart';
 import '../../domain/models/work_schedule.dart';
 import '../../domain/services/backup_service.dart';
 import '../providers/scheduling_providers.dart';
+import '../widgets/calendar_cleanup_sheet.dart';
 
 /// Tab 5: Glassmorphic Control Center Settings (Theme, Localization, Work Schedule, Connected Calendars).
 class SettingsScreen extends ConsumerWidget {
@@ -503,6 +504,33 @@ class SettingsScreen extends ConsumerWidget {
                     icon: const Icon(Icons.cleaning_services_rounded),
                     label: Text(
                       strings.startFreshButton,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: SyncroColors.amberSuggested,
+                      side: BorderSide(
+                        color:
+                            SyncroColors.amberSuggested.withValues(alpha: 0.55),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: () {
+                      CalendarCleanupSheet.show(context);
+                    },
+                    icon: const Icon(Icons.delete_sweep_rounded),
+                    label: Text(
+                      strings.isPt
+                          ? 'Limpar Calendários e Eventos do Syncro'
+                          : 'Clean Syncro Calendars & Events',
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                   ),

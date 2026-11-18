@@ -127,6 +127,7 @@ class EventType {
     SchedulingMode? schedulingMode,
     List<DayTimeWindow>? allowedTimeWindows,
     String? calendarMappingId,
+    bool clearCalendarMappingId = false,
   }) {
     return EventType(
       id: id ?? this.id,
@@ -139,7 +140,9 @@ class EventType {
       bufferAfter: bufferAfter ?? this.bufferAfter,
       schedulingMode: schedulingMode ?? this.schedulingMode,
       allowedTimeWindows: allowedTimeWindows ?? this.allowedTimeWindows,
-      calendarMappingId: calendarMappingId ?? this.calendarMappingId,
+      calendarMappingId: clearCalendarMappingId
+          ? null
+          : (calendarMappingId ?? this.calendarMappingId),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/calendar/calendar_client.dart';
 import '../../data/calendar/device_calendar_client.dart';
+import '../../data/calendar/google_cloud_calendar_service.dart';
 import '../../data/local/app_database.dart';
 import '../../data/repositories/drift_scheduling_repository.dart';
 import '../../data/repositories/scheduling_repository.dart';
@@ -32,19 +33,33 @@ final schedulingRepositoryProvider = Provider<SchedulingRepository>((ref) {
   return DriftSchedulingRepository(db);
 });
 
+/// Google Calendar REST v3 & OAuth2 service provider.
+final googleCloudCalendarServiceProvider =
+    Provider<GoogleCloudCalendarService>((ref) {
+  return GoogleCloudCalendarService();
+});
+
+/// Reactive email address for an active Google Cloud Calendar API session.
+final googleCloudConnectedEmailProvider = StateProvider<String?>((ref) {
+  return null;
+});
+
 /// Platform-aware CalendarClient provider (`device_calendar` on iOS/Android,
 /// with transparent in-memory sandbox fallback on desktop/tests).
 final calendarClientProvider = Provider<CalendarClient>((ref) {
-  return NativeDeviceCalendarClient();
+  final cloudService = ref.watch(googleCloudCalendarServiceProvider);
+  return NativeDeviceCalendarClient(cloudService: cloudService);
 });
 
 /// Two-way Calendar Synchronization & Busy-Slot Aggregation Service provider.
 final calendarSyncServiceProvider = Provider<CalendarSyncService>((ref) {
   final repository = ref.watch(schedulingRepositoryProvider);
   final calendarClient = ref.watch(calendarClientProvider);
+  final cloudService = ref.watch(googleCloudCalendarServiceProvider);
   return CalendarSyncService(
     repository: repository,
     calendarClient: calendarClient,
+    cloudService: cloudService,
   );
 });
 
@@ -125,8 +140,8 @@ final selectedPrimaryCalendarIdProvider = StateProvider<String?>((ref) {
 });
 
 /// Resolves the active primary Google/local calendar on the device:
-/// prefers [selectedPrimaryCalendarIdProvider], then primary `@gmail.com` account,
-/// then the first writable non-Syncro calendar.
+/// prefers [selectedPrimaryCalendarIdProvider], then the default `'Syncro'`
+/// Google calendar, then primary `@gmail.com` account, then first writable.
 final activePrimaryCalendarProvider = Provider<ExternalCalendar?>((ref) {
   final calendars = ref.watch(externalCalendarsFutureProvider).valueOrNull ??
       const <ExternalCalendar>[];
@@ -138,20 +153,28 @@ final activePrimaryCalendarProvider = Provider<ExternalCalendar?>((ref) {
     if (match != null) return match;
   }
 
-  final nonSyncroWritable = calendars
+  final nonSyncroLocalWritable = calendars
       .where((c) =>
           !c.isReadOnly &&
-          !c.name.startsWith('Syncro') &&
-          c.accountName != 'Syncro')
+          !c.name.startsWith('Syncro —') &&
+          c.accountName != 'Syncro' &&
+          c.accountName != 'Syncro Local')
       .toList();
 
-  final gmailPrimary = nonSyncroWritable
+  final defaultSyncroCal = nonSyncroLocalWritable
+      .where((c) => c.name.trim().toLowerCase() == 'syncro')
+      .firstOrNull;
+  if (defaultSyncroCal != null) return defaultSyncroCal;
+
+  final gmailPrimary = nonSyncroLocalWritable
       .where((c) =>
           c.name.contains('@gmail.com') ||
           (c.accountName?.contains('@gmail.com') ?? false))
       .firstOrNull;
 
-  return gmailPrimary ?? nonSyncroWritable.firstOrNull ?? calendars.first;
+  return gmailPrimary ??
+      nonSyncroLocalWritable.firstOrNull ??
+      calendars.first;
 });
 
 /// Controls whether external Google/device calendar events are rendered directly in Tab 1 (Agenda).
@@ -185,7 +208,9 @@ final externalCalendarEventsProvider =
 
   final List<ExternalCalendarEvent> allExternal = [];
   for (final cal in calendars) {
-    if (cal.name.startsWith('Syncro') || cal.accountName == 'Syncro') {
+    if (cal.accountName == 'Syncro' ||
+        cal.accountName == 'Syncro Local' ||
+        cal.name.startsWith('Syncro —')) {
       continue;
     }
     final events = await client.retrieveEvents(
