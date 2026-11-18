@@ -37,6 +37,8 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
   DateTime _focusedDate = DateTime(2026, 10, 19);
   String? _selectedEventTypeId;
   DateTime? _selectedDateFilter;
+  bool _userHasManuallyPaged = false;
+  DateTime? _lastAutoPageTime;
 
   /// Windowed lazy loading over day groups: 7 days per page, at most 21
   /// days mounted at once (older days are trimmed from the top).
@@ -50,7 +52,11 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
       _focusedDate = DateTime(now.year, now.month, now.day);
     }
     _pager.attach(() {
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {
+          _userHasManuallyPaged = false;
+        });
+      }
     });
   }
 
@@ -74,10 +80,11 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
-  /// Applies a filter change and restarts the window from the first page.
+  /// Applies a filter change and restarts the window anchored at Today.
   void _applyFilter(VoidCallback change) {
     setState(() {
       change();
+      _userHasManuallyPaged = false;
       _pager.reset();
     });
   }
@@ -209,6 +216,26 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
     }
     final sortedDays = grouped.keys.toList()..sort();
 
+    // Anchor Agenda on Today (or the nearest upcoming day with events)
+    final anchorDay = DateTime(
+      _focusedDate.year,
+      _focusedDate.month,
+      _focusedDate.day,
+    );
+    var todayIndex = sortedDays.indexWhere((d) => !d.isBefore(anchorDay));
+    if (todayIndex == -1 && sortedDays.isNotEmpty) {
+      todayIndex = sortedDays.length - 1;
+    }
+    if (!_userHasManuallyPaged && sortedDays.isNotEmpty) {
+      _pager.jumpToIndex(todayIndex, sortedDays.length);
+    }
+
+    final upcomingRibbonDates =
+        distinctDates.where((d) => !d.isBefore(anchorDay)).toList();
+    final ribbonDates = upcomingRibbonDates.isNotEmpty
+        ? upcomingRibbonDates
+        : distinctDates;
+
     // Windowed slice of day groups currently mounted.
     final totalDays = sortedDays.length;
     final windowStart = _pager.visibleStart(totalDays);
@@ -227,8 +254,33 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
         ref.invalidate(externalCalendarEventsProvider);
         await ref.read(calendarConflictsProvider.future);
       },
-      child: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification.metrics.axis != Axis.vertical) return false;
+          final now = DateTime.now();
+          if (_lastAutoPageTime != null &&
+              now.difference(_lastAutoPageTime!).inMilliseconds < 400) {
+            return false;
+          }
+          if (notification is ScrollUpdateNotification &&
+              notification.metrics.maxScrollExtent > 0 &&
+              notification.metrics.pixels >=
+                  notification.metrics.maxScrollExtent - 100 &&
+              _pager.hasMore(totalDays)) {
+            _lastAutoPageTime = now;
+            final scrollCtx = notification.context;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted || !_pager.hasMore(totalDays)) return;
+              final targetCtx =
+                  (scrollCtx != null && scrollCtx.mounted) ? scrollCtx : context;
+              _userHasManuallyPaged = true;
+              _pager.loadMore(targetCtx, totalDays, setState);
+            });
+          }
+          return false;
+        },
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
         slivers: [
           SliverPadding(
             padding: EdgeInsets.fromLTRB(16, topPadding, 16, 8),
@@ -424,13 +476,13 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
 
                 // 4. Interactive Presentation: Timeline Ribbon, Month Matrix, or Week Matrix
                 switch (_viewMode) {
-                  AgendaViewMode.timeline => distinctDates.isNotEmpty
+                  AgendaViewMode.timeline => ribbonDates.isNotEmpty
                       ? SizedBox(
                           height: 66,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             physics: const BouncingScrollPhysics(),
-                            itemCount: distinctDates.length + 1,
+                            itemCount: ribbonDates.length + 1,
                             separatorBuilder: (_, __) =>
                                 const SizedBox(width: 8),
                             itemBuilder: (context, idx) {
@@ -450,7 +502,7 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                                       () => _selectedDateFilter = null),
                                 );
                               }
-                              final date = distinctDates[idx - 1];
+                              final date = ribbonDates[idx - 1];
                               final isSelected = _selectedDateFilter != null &&
                                   _selectedDateFilter!.year == date.year &&
                                   _selectedDateFilter!.month == date.month &&
@@ -607,6 +659,33 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                       ],
                     ),
                   ),
+                if (_userHasManuallyPaged &&
+                    windowStart != todayIndex &&
+                    sortedDays.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: ActionChip(
+                      avatar: Icon(
+                        Icons.today_rounded,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      label: Text(
+                        strings.isPt ? 'Ir para Hoje' : 'Jump to Today',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        setState(() {
+                          _userHasManuallyPaged = false;
+                          _pager.jumpToIndex(todayIndex, totalDays);
+                        });
+                      },
+                    ),
+                  ),
               ],
             ),
           ),
@@ -666,7 +745,10 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                   if (hasEarlier && index == 0) {
                     return PagerShowEarlierButton(
                       label: strings.showEarlierLabel(windowStart),
-                      onTap: (ctx) => _pager.loadEarlier(ctx, setState),
+                      onTap: (ctx) {
+                        _userHasManuallyPaged = true;
+                        _pager.loadEarlier(ctx, setState);
+                      },
                     );
                   }
                   final local = index - leading;
@@ -681,8 +763,10 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                         totalDays,
                       ),
                       endLabel: strings.endOfListLabel,
-                      onLoadMore: (ctx) =>
-                          _pager.loadMore(ctx, totalDays, setState),
+                      onLoadMore: (ctx) {
+                        _userHasManuallyPaged = true;
+                        _pager.loadMore(ctx, totalDays, setState);
+                      },
                     );
                   }
                   final globalIndex = windowStart + local;
@@ -731,6 +815,39 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                                             .primary,
                                       ),
                                 ),
+                                if (_isSameDay(day, anchorDay)) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 7,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary
+                                          .withValues(alpha: 0.16),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary
+                                            .withValues(alpha: 0.4),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      strings.isPt ? 'HOJE' : 'TODAY',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.5,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -772,6 +889,7 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
             ),
           ),
       ],
+    ),
     ),
   );
   }

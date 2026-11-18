@@ -85,6 +85,21 @@ class WindowedPager {
     _heights.clear();
   }
 
+  /// Anchors the window starting at [anchorIndex] (e.g. Today's index in a
+  /// sorted date list) so `[anchorIndex, anchorIndex + pageSize)` is mounted
+  /// initially while keeping earlier items (`0 .. anchorIndex - 1`) accessible
+  /// via [loadEarlier] and later items via [loadMore].
+  void jumpToIndex(int anchorIndex, int total) {
+    if (total <= 0) {
+      reset();
+      return;
+    }
+    final clampedStart = math.min(math.max(0, anchorIndex), math.max(0, total - 1));
+    start = clampedStart;
+    end = math.min(total, clampedStart + pageSize);
+    _heights.clear();
+  }
+
   /// Wraps a list item so its laid-out height is recorded for anchoring.
   ///
   /// The wrapper is keyed by [globalIndex] so that, together with

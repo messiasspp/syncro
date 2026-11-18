@@ -193,5 +193,33 @@ void main() {
         expect(pager1.end, 20); // Not reset because it was detached
       },
     );
+
+    testWidgets(
+      'jumpToIndex anchors window at todayIndex with hasEarlier and hasMore',
+      (tester) async {
+        await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+        final context = tester.element(find.byType(SizedBox));
+
+        final pager = WindowedPager(pageSize: 12, maxWindow: 36);
+        pager.jumpToIndex(15, 40);
+
+        expect(pager.start, 15);
+        expect(pager.end, 27);
+        expect(pager.hasEarlier, isTrue);
+        expect(pager.hasMore(40), isTrue);
+
+        // Load earlier page above today -> [3, 27)
+        pager.loadEarlier(context, (fn) => fn());
+        expect(pager.start, 3);
+        expect(pager.end, 27);
+
+        // Load more upcoming page below -> [3, 39) capped at 36 window -> [3, 39) -> trimmed to [3, 39]?
+        // 27 + 12 = 39; 39 - 3 = 36 <= maxWindow (36), so start stays 3, end = 39!
+        pager.loadMore(context, 40, (fn) => fn());
+        expect(pager.start, 3);
+        expect(pager.end, 39);
+        expect(pager.hasMore(40), isTrue);
+      },
+    );
   });
 }
