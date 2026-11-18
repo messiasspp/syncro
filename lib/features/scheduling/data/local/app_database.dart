@@ -36,6 +36,13 @@ class AppDatabase extends GeneratedDatabase {
         onCreate: (Migrator m) async {
           await _createSchema();
         },
+        beforeOpen: (details) async {
+          try {
+            await customStatement(
+              "ALTER TABLE event_types ADD COLUMN code TEXT NOT NULL DEFAULT ''",
+            );
+          } catch (_) {}
+        },
       );
 
   /// Creates the 5 core relational tables and performance indexes for interval queries.
@@ -55,6 +62,7 @@ class AppDatabase extends GeneratedDatabase {
       CREATE TABLE IF NOT EXISTS event_types (
         id TEXT PRIMARY KEY NOT NULL,
         name TEXT NOT NULL,
+        code TEXT NOT NULL DEFAULT '',
         color_hex TEXT NOT NULL DEFAULT '#2196F3',
         work_hours_constraint TEXT NOT NULL DEFAULT 'bothFlexible',
         min_duration_minutes INTEGER NOT NULL,
@@ -219,13 +227,14 @@ class AppDatabase extends GeneratedDatabase {
     await customStatement(
       '''
       INSERT INTO event_types (
-        id, name, color_hex, work_hours_constraint,
+        id, name, code, color_hex, work_hours_constraint,
         min_duration_minutes, max_duration_minutes,
         buffer_before_minutes, buffer_after_minutes,
         scheduling_mode, allowed_time_windows_json, calendar_mapping_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
+        code = excluded.code,
         color_hex = excluded.color_hex,
         work_hours_constraint = excluded.work_hours_constraint,
         min_duration_minutes = excluded.min_duration_minutes,
@@ -239,6 +248,7 @@ class AppDatabase extends GeneratedDatabase {
       [
         eventType.id,
         eventType.name,
+        eventType.effectiveCode,
         eventType.colorHex,
         eventType.workHoursConstraint.name,
         eventType.minDuration.inMinutes,
@@ -260,6 +270,7 @@ class AppDatabase extends GeneratedDatabase {
     return EventType(
       id: row.read<String>('id'),
       name: row.read<String>('name'),
+      code: row.readNullable<String>('code') ?? '',
       colorHex: row.read<String>('color_hex'),
       workHoursConstraint: WorkHoursConstraint.values.firstWhere(
         (e) => e.name == constraintName,

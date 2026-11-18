@@ -244,11 +244,11 @@ class CalendarSyncService {
     final visitSuffix = appointment.visitIndex != null
         ? ' (Visit #${appointment.visitIndex! + 1})'
         : '';
-    final title = '${eventType.name} — $participantName$visitSuffix';
+    final title = '${eventType.effectiveCode} - $participantName$visitSuffix';
 
     final descriptionBuffer = StringBuffer()
       ..writeln('Scheduled via Syncro Smart Engine')
-      ..writeln('Category: ${eventType.name}')
+      ..writeln('Category: ${eventType.name} (${eventType.effectiveCode})')
       ..writeln('Participant: $participantName');
     if (entity?.phone != null) {
       descriptionBuffer.writeln('Phone: ${entity!.phone}');

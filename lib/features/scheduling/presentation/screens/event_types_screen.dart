@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/l10n/app_strings.dart';
@@ -111,26 +112,56 @@ class _EventTypesScreenState extends ConsumerState<EventTypesScreen> {
   }
 }
 
+class _UpperCaseCodeFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final sanitized = EventType.sanitizeCode(newValue.text);
+    return TextEditingValue(
+      text: sanitized,
+      selection: TextSelection.collapsed(offset: sanitized.length),
+    );
+  }
+}
+
 Future<void> _showCreateEventTypeDialog(
   BuildContext context,
   WidgetRef ref,
-  AppStrings strings,
-) async {
-  final nameCtrl = TextEditingController();
-  final minDurCtrl = TextEditingController(text: '45');
-  final maxDurCtrl = TextEditingController(text: '60');
-  final bufBeforeCtrl = TextEditingController(text: '10');
-  final bufAfterCtrl = TextEditingController(text: '10');
-  var selectedConstraint = WorkHoursConstraint.outsideWorkHours;
-  var selectedMode = SchedulingMode.suggestTopRanked;
-  var selectedHex = '#6366F1';
+  AppStrings strings, {
+  EventType? existing,
+}) async {
+  final nameCtrl = TextEditingController(text: existing?.name ?? '');
+  final codeCtrl = TextEditingController(text: existing?.effectiveCode ?? '');
+  final minDurCtrl = TextEditingController(
+    text: (existing?.minDuration.inMinutes ?? 45).toString(),
+  );
+  final maxDurCtrl = TextEditingController(
+    text: (existing?.maxDuration.inMinutes ?? 60).toString(),
+  );
+  final bufBeforeCtrl = TextEditingController(
+    text: (existing?.bufferBefore.inMinutes ?? 10).toString(),
+  );
+  final bufAfterCtrl = TextEditingController(
+    text: (existing?.bufferAfter.inMinutes ?? 10).toString(),
+  );
+  var selectedConstraint =
+      existing?.workHoursConstraint ?? WorkHoursConstraint.outsideWorkHours;
+  var selectedMode = existing?.schedulingMode ?? SchedulingMode.suggestTopRanked;
+  var selectedHex = existing?.colorHex ?? '#6366F1';
+  var userEditedCode = existing != null && existing.code.trim().isNotEmpty;
 
-  const colorOptions = [
+  final colorOptions = <String>[
     '#6366F1',
     '#14B8A6',
     '#EC4899',
     '#F59E0B',
     '#3B82F6',
+    if (existing != null &&
+        !const ['#6366F1', '#14B8A6', '#EC4899', '#F59E0B', '#3B82F6']
+            .contains(existing.colorHex))
+      existing.colorHex,
   ];
 
   await showDialog<void>(
@@ -139,18 +170,56 @@ Future<void> _showCreateEventTypeDialog(
       return StatefulBuilder(
         builder: (ctx, setModalState) {
           return AlertDialog(
-            title: Text(strings.newEventTypeButton),
+            title: Text(
+              existing != null
+                  ? (strings.isPt
+                      ? 'Editar Grupo e Código'
+                      : 'Edit Group & Code')
+                  : strings.newEventTypeButton,
+            ),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(
-                    controller: nameCtrl,
-                    decoration: InputDecoration(
-                      labelText:
-                          strings.isPt ? 'Nome do Grupo' : 'Group Name',
-                      hintText: 'e.g. Tennis Club / Cardiology Study',
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextField(
+                          controller: nameCtrl,
+                          onChanged: (val) {
+                            if (!userEditedCode) {
+                              codeCtrl.text = val.trim().isEmpty
+                                  ? ''
+                                  : EventType.generateDefaultCode(val);
+                            }
+                          },
+                          decoration: InputDecoration(
+                            labelText: strings.isPt
+                                ? 'Nome do Grupo'
+                                : 'Group Name',
+                            hintText: 'Mounjaro Clinical Study',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: TextField(
+                          controller: codeCtrl,
+                          textCapitalization: TextCapitalization.characters,
+                          inputFormatters: [_UpperCaseCodeFormatter()],
+                          onChanged: (_) => userEditedCode = true,
+                          decoration: InputDecoration(
+                            labelText: strings.isPt
+                                ? 'Código (Máx 4)'
+                                : 'Code (Max 4)',
+                            hintText: 'MCS',
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<WorkHoursConstraint>(
@@ -286,6 +355,11 @@ Future<void> _showCreateEventTypeDialog(
                 onPressed: () async {
                   final name = nameCtrl.text.trim();
                   if (name.isEmpty) return;
+                  final finalCode = EventType.sanitizeCode(
+                    codeCtrl.text.trim().isNotEmpty
+                        ? codeCtrl.text.trim()
+                        : EventType.generateDefaultCode(name),
+                  );
                   final minMin = int.tryParse(minDurCtrl.text) ?? 45;
                   final maxMin = int.tryParse(maxDurCtrl.text) ?? minMin;
                   final preMin = int.tryParse(bufBeforeCtrl.text) ?? 0;
@@ -297,8 +371,10 @@ Future<void> _showCreateEventTypeDialog(
                       ? primaryCal.id
                       : null;
                   final newEt = EventType(
-                    id: 'et_${DateTime.now().millisecondsSinceEpoch}',
+                    id: existing?.id ??
+                        'et_${DateTime.now().millisecondsSinceEpoch}',
                     name: name,
+                    code: finalCode,
                     colorHex: selectedHex,
                     workHoursConstraint: selectedConstraint,
                     minDuration: Duration(minutes: minMin),
@@ -308,7 +384,10 @@ Future<void> _showCreateEventTypeDialog(
                     bufferBefore: Duration(minutes: preMin),
                     bufferAfter: Duration(minutes: postMin),
                     schedulingMode: selectedMode,
-                    calendarMappingId: initialCalId,
+                    allowedTimeWindows:
+                        existing?.allowedTimeWindows ?? const [],
+                    calendarMappingId:
+                        existing?.calendarMappingId ?? initialCalId,
                   );
                   await ref
                       .read(schedulingRepositoryProvider)
@@ -317,7 +396,11 @@ Future<void> _showCreateEventTypeDialog(
                     await ref
                         .read(calendarSyncServiceProvider)
                         .ensureDedicatedCalendarForEventType(newEt);
+                    if (existing != null) {
+                      await ref.read(calendarSyncServiceProvider).syncAll();
+                    }
                     ref.invalidate(externalCalendarsFutureProvider);
+                    ref.invalidate(externalCalendarEventsProvider);
                   } catch (_) {}
                   if (ctx.mounted) Navigator.of(ctx).pop();
                 },
@@ -387,6 +470,35 @@ class _EventTypeGlassCard extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 10),
+              GestureDetector(
+                onTap: () => _showCreateEventTypeDialog(
+                  context,
+                  ref,
+                  strings,
+                  existing: eventType,
+                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: color.withValues(alpha: 0.35)),
+                  ),
+                  child: Text(
+                    eventType.effectiveCode,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.6,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   eventType.name,
@@ -412,6 +524,19 @@ class _EventTypeGlassCard extends ConsumerWidget {
                     fontWeight: FontWeight.w800,
                     color: color,
                   ),
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: strings.isPt
+                    ? 'Editar Grupo / Código'
+                    : 'Edit Group / Code',
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                onPressed: () => _showCreateEventTypeDialog(
+                  context,
+                  ref,
+                  strings,
+                  existing: eventType,
                 ),
               ),
             ],

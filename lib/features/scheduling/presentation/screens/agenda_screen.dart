@@ -1094,6 +1094,32 @@ class _TimelineAppointmentRow extends StatelessWidget {
               children: [
                 Row(
                   children: [
+                    if (eventType != null &&
+                        !eventType!.id.startsWith('__ext_cal_')) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: categoryColor.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(7),
+                          border: Border.all(
+                            color: categoryColor.withValues(alpha: 0.34),
+                          ),
+                        ),
+                        child: Text(
+                          eventType!.effectiveCode,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                            color: categoryColor,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                    ],
                     Expanded(
                       child: Text(
                         participantName,

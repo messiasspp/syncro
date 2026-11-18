@@ -3,6 +3,7 @@ import 'package:syncro/features/scheduling/data/calendar/calendar_client.dart';
 import 'package:syncro/features/scheduling/data/calendar/google_cloud_calendar_service.dart';
 import 'package:syncro/features/scheduling/data/repositories/scheduling_repository.dart';
 import 'package:syncro/features/scheduling/domain/models/appointment.dart';
+import 'package:syncro/features/scheduling/domain/models/entity.dart';
 import 'package:syncro/features/scheduling/domain/models/event_type.dart';
 import 'package:syncro/features/scheduling/domain/models/external_calendar.dart';
 import 'package:syncro/features/scheduling/domain/models/time_range.dart';
@@ -221,5 +222,69 @@ void main() {
 
     final persisted = await repo.getEventTypeById('et_friends_cloud');
     expect(persisted?.calendarMappingId, mappedId);
+  });
+
+  test('EventType generates default 4-char uppercase code (MCS) and formats calendar title as CODE - Name', () async {
+    expect(
+      EventType.generateDefaultCode('Mounjaro Clinical Study'),
+      equals('MCS'),
+    );
+    expect(EventType.generateDefaultCode('Friends Zone'), equals('FZ'));
+    expect(EventType.generateDefaultCode('Friends'), equals('FRI'));
+    expect(EventType.sanitizeCode('mc 1!'), equals('MC1'));
+    expect(EventType.sanitizeCode('abcd99'), equals('ABCD'));
+
+    const studyGroup = EventType(
+      id: 'et_mcs',
+      name: 'Mounjaro Clinical Study',
+      colorHex: '#14B8A6',
+      minDuration: Duration(minutes: 30),
+      maxDuration: Duration(minutes: 60),
+      calendarMappingId: 'cal_gmail',
+    );
+    expect(studyGroup.effectiveCode, equals('MCS'));
+    await repo.upsertEventType(studyGroup);
+    await repo.upsertEntity(
+      const Entity(id: 'patient_101', name: 'Patient 101'),
+    );
+
+    final slot = TimeRange(
+      start: DateTime(2026, 11, 20, 10, 0),
+      end: DateTime(2026, 11, 20, 10, 45),
+    );
+    final apt = Appointment(
+      id: 'apt_mcs_1',
+      entityId: 'patient_101',
+      eventTypeId: 'et_mcs',
+      timeRange: slot,
+      status: AppointmentStatus.confirmed,
+      visitIndex: 0,
+    );
+    await repo.upsertAppointment(apt);
+
+    final pushed = await syncService.pushAppointmentToCalendar(apt);
+    var events = await calendarClient.retrieveEvents(
+      calendarId: 'cal_gmail',
+      range: TimeRange(
+        start: DateTime(2026, 11, 20, 0, 0),
+        end: DateTime(2026, 11, 21, 0, 0),
+      ),
+    );
+    expect(events.length, equals(1));
+    expect(events.first.title, equals('MCS - Patient 101 (Visit #1)'));
+
+    // Edit code from default MCS -> MC1 and re-sync
+    await repo.upsertEventType(studyGroup.copyWith(code: 'MC1'));
+    await syncService.pushAppointmentToCalendar(pushed);
+
+    events = await calendarClient.retrieveEvents(
+      calendarId: 'cal_gmail',
+      range: TimeRange(
+        start: DateTime(2026, 11, 20, 0, 0),
+        end: DateTime(2026, 11, 21, 0, 0),
+      ),
+    );
+    expect(events.length, equals(1));
+    expect(events.first.title, equals('MC1 - Patient 101 (Visit #1)'));
   });
 }

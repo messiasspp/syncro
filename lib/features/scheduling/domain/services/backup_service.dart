@@ -61,6 +61,7 @@ class BackupService {
       'eventTypes': eventTypes.map((e) => {
         'id': e.id,
         'name': e.name,
+        'code': e.effectiveCode,
         'colorHex': e.colorHex,
         'workHoursConstraint': e.workHoursConstraint.name,
         'minDurationMinutes': e.minDuration.inMinutes,
@@ -166,6 +167,7 @@ class BackupService {
         final eventType = EventType(
           id: item['id'] as String,
           name: item['name'] as String,
+          code: (item['code'] as String?) ?? '',
           colorHex: (item['colorHex'] as String?) ?? '#2196F3',
           workHoursConstraint: whConstraint,
           minDuration: Duration(minutes: (item['minDurationMinutes'] as int?) ?? 30),

@@ -91,6 +91,7 @@ class DayTimeWindow {
 class EventType {
   final String id;
   final String name;
+  final String code;
   final String colorHex;
   final WorkHoursConstraint workHoursConstraint;
   final Duration minDuration;
@@ -104,6 +105,7 @@ class EventType {
   const EventType({
     required this.id,
     required this.name,
+    this.code = '',
     this.colorHex = '#2196F3',
     this.workHoursConstraint = WorkHoursConstraint.bothFlexible,
     required this.minDuration,
@@ -115,9 +117,40 @@ class EventType {
     this.calendarMappingId,
   });
 
+  /// Sanitizes a group code to uppercase ASCII letters & digits only, max 4 chars.
+  static String sanitizeCode(String raw) {
+    final cleaned = raw.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    return cleaned.length > 4 ? cleaned.substring(0, 4) : cleaned;
+  }
+
+  /// Generates a default 2–4 character uppercase alphanumeric code from [name].
+  /// E.g., "Mounjaro Clinical Study" -> "MCS", "Friends Zone" -> "FZ", "Friends" -> "FRI".
+  static String generateDefaultCode(String name) {
+    final words = name
+        .trim()
+        .split(RegExp(r'[^A-Za-z0-9]+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
+    if (words.isEmpty) return 'GRP';
+    if (words.length >= 2) {
+      final initials = words.take(4).map((w) => w[0].toUpperCase()).join();
+      return sanitizeCode(initials);
+    }
+    final single = sanitizeCode(words.first);
+    if (single.isEmpty) return 'GRP';
+    return single.length > 3 ? single.substring(0, 3) : single;
+  }
+
+  /// Returns the persisted sanitized code, or generates a default from [name].
+  String get effectiveCode {
+    final cleaned = sanitizeCode(code);
+    return cleaned.isNotEmpty ? cleaned : generateDefaultCode(name);
+  }
+
   EventType copyWith({
     String? id,
     String? name,
+    String? code,
     String? colorHex,
     WorkHoursConstraint? workHoursConstraint,
     Duration? minDuration,
@@ -132,6 +165,7 @@ class EventType {
     return EventType(
       id: id ?? this.id,
       name: name ?? this.name,
+      code: code ?? this.code,
       colorHex: colorHex ?? this.colorHex,
       workHoursConstraint: workHoursConstraint ?? this.workHoursConstraint,
       minDuration: minDuration ?? this.minDuration,
